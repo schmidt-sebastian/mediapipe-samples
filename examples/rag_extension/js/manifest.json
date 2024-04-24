@@ -1,0 +1,19 @@
+{
+  "manifest_version": 2,
+  "name": "RAG Extension",
+  "version": "1.0",
+  "author": "Google",
+  "description": "An extension demonstration RAG and FC with MediaPipe's LLM inference",
+  "background": {
+    "page": "index.html"
+  },
+  "content_scripts": [{
+    "matches": ["https://my-homemade-recipes.web.app/"],
+    "js": ["index.js"]
+  }],
+  "browser_action": {
+  },
+  "web_accessible_resources": [
+    "*"
+  ]
+}

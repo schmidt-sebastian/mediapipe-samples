@@ -1,0 +1,21 @@
+{
+  "name": "rag_extension",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "rollup -c"
+  },
+  "type": "module",
+  "author": "",
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "@mediapipe/tasks-genai": "^0.10.12",
+    "@rollup/plugin-commonjs": "^25.0.7",
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-typescript": "^11.1.6",
+    "rollup": "^4.16.4",
+    "tslib": "^2.6.2",
+    "typescript": "^5.4.5"
+  }
+}

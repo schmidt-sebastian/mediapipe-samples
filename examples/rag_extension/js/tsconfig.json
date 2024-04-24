@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "lib": [
+      "dom",
+      "es6"
+    ],
+  },
+  "exclude": [
+    "node_modules"
+  ]
+}
