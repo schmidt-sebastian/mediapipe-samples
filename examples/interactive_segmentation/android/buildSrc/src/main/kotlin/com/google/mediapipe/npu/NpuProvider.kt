@@ -1,4 +1,4 @@
-package com.google.mediapipe.tasks.npu
+package com.google.mediapipe.npu
 
 import org.gradle.api.Plugin
 import org.gradle.api.Project
@@ -15,7 +15,7 @@ class NpuProvider : Plugin<Project> {
             projectVersion.set(project.version.toString())
             outputDir.set(project.layout.buildDirectory.dir("generated/source/buildInfo/kotlin"))
         }
-
+        project.tasks.register("createNpuFeatureModule", CreateNpuModuleTask::class.java)
         project.afterEvaluate {
             project.extensions.getByType(com.android.build.api.dsl.ApplicationExtension::class.java).sourceSets.getByName("main") {
                 kotlin.srcDir(generateCodeTask.get().outputDir)

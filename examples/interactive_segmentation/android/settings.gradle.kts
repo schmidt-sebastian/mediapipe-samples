@@ -5,11 +5,10 @@ pluginManagement {
         gradlePluginPortal()
     }
     plugins {
-        id 'com.android.application' version '8.12.3' apply false
-        id 'com.android.library' version '8.12.3' apply false
-        id 'org.jetbrains.kotlin.android' version '2.2.20' apply false
-        id 'de.undercouch.download' version '5.6.0' apply false
-
+        id("com.android.application") version "8.12.3" apply false
+        id("com.android.library") version "8.12.3" apply false
+        id("org.jetbrains.kotlin.android") version "2.2.20" apply false
+        id("de.undercouch.download") version "5.6.0" apply false
     }
 }
 
@@ -22,5 +21,6 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "Interactive Segmentation"
-include ':app'
-include ':npu'
+include(":app")
+include(":npu")
+include(":npu_some-vendor")

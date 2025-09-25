@@ -1,4 +1,4 @@
-package com.google.mediapipe.tasks.npu
+package com.google.mediapipe.npu
 import org.gradle.api.provider.Property
 
 // Defines the configurable block for our plugin

@@ -18,7 +18,7 @@ gradlePlugin {
     plugins {
         register("mediapipe-npu") {
             id = "com.google.mediapipe.npu"
-            implementationClass = "com.google.mediapipe.tasks.npu.NpuProvider"
+            implementationClass = "com.google.mediapipe.npu.NpuProvider"
         }
     }
 }
