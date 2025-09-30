@@ -1,4 +1,3 @@
-
 import com.google.mediapipe.npu.CreateNpuModuleTask
 
 plugins {
@@ -8,14 +7,12 @@ plugins {
     id("com.google.mediapipe.npu")
 }
 
-buildInfo {
-    packageName.set("com.myapp.info")
-    className.set("AppBuildInfo")
-}
-
+//tasks.register<CreateNpuModuleTask>("createNpuFeatureModule") {
+//    group = "mediapipe"
+//    description = "Creates MediaPipe NPU helper modules."
+//}
 tasks.named<CreateNpuModuleTask>("createNpuFeatureModule") {
-    // Configuration for the task can be added here
-    vendorName = "some-vendor"
+    qualcommLibDirectory = "/Users/mrschmidt/Downloads/qairt/2.38.0.250901/lib"
 }
 
 android {
@@ -73,6 +70,7 @@ dependencies {
 
     // MediaPipe Library
     implementation("com.google.mediapipe:tasks-vision:0.10.28")
+    implementation("com.google.android.play:feature-delivery:2.1.0")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
