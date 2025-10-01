@@ -13,21 +13,38 @@ import org.gradle.api.NamedDomainObjectContainer;
 import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.provider.Property;
 import org.gradle.api.tasks.Input;
+import org.gradle.api.tasks.Nested;
 import org.gradle.api.tasks.OutputDirectory;
 import org.gradle.api.tasks.TaskAction;
 
+import org.gradle.api.model.ObjectFactory;
+
+import javax.inject.Inject;
 import javax.lang.model.element.Modifier;
 import java.io.IOException;
 import java.util.List;
 
 public abstract class GenerateVisionProviderTask extends DefaultTask {
     private static final String PACKAGE_NAME = "com.mediapipe.tasks.vision.provider";
-
-    @Input
-    public abstract Property<NamedDomainObjectContainer<VisionTask>> getTasksConfiguration();
+    // 1. Declare the container as a final field.
+    private final NamedDomainObjectContainer<VisionTask> tasksConfiguration;
 
     @OutputDirectory
     public abstract DirectoryProperty getOutputDir();
+
+    // 2. Use @Inject on the constructor to get an ObjectFactory.
+    @Inject
+    public GenerateVisionProviderTask(ObjectFactory objectFactory) {
+        // 3. Create the container using the factory.
+        this.tasksConfiguration = objectFactory.domainObjectContainer(VisionTask.class);
+    }
+
+    // 4. Expose the container with a getter annotated with @Nested.
+    //    @Nested is crucial for correct up-to-date checks.
+    @Nested
+    public NamedDomainObjectContainer<VisionTask> getTasksConfiguration() {
+        return tasksConfiguration;
+    }
 
     @TaskAction
     public void generate() throws IOException {
@@ -70,16 +87,18 @@ public abstract class GenerateVisionProviderTask extends DefaultTask {
         );
 
         // --- Generate sections for each task from the Gradle configuration ---
-        NamedDomainObjectContainer<VisionTask> tasks = getTasksConfiguration().get();
-
-        generateModels(classBuilder, tasks, visionModelCn, quantizationCn);
-        generateSettings(classBuilder, tasks, runningModeCn, listCn, setCn, stringCn, nonNullCn, classifierOptionsCn);
-        generateCreators(classBuilder, tasks, futureCn, nonNullCn);
+//        NamedDomainObjectContainer<VisionTask> tasks = getTasksConfiguration().get();
+//
+//        generateModels(classBuilder, tasks, visionModelCn, quantizationCn);
+//        generateSettings(classBuilder, tasks, runningModeCn, listCn, setCn, stringCn, nonNullCn, classifierOptionsCn);
+//        generateCreators(classBuilder, tasks, futureCn, nonNullCn);
 
         // --- Write the generated class to a file ---
         JavaFile javaFile = JavaFile.builder(basePackage, classBuilder.build())
                 .indent("    ")
                 .build();
+
+        System.err.println("Output dir: " + getOutputDir().get().getAsFile());
 
         getOutputDir().get().getAsFile().mkdirs();
         javaFile.writeTo(getOutputDir().get().getAsFile());
@@ -111,18 +130,18 @@ public abstract class GenerateVisionProviderTask extends DefaultTask {
                             .build()
             );
 
-            task.getModels().get().forEach(model ->
-                    modelEnumBuilder.addEnumConstant(
-                            model.getEnumName(),
-                            TypeSpec.anonymousClassBuilder(
-                                    "$S, $S, $T.$L",
-                                    model.getModelName(),
-                                    model.getVersion(),
-                                    quantizationCn,
-                                    model.getQuantization()
-                            ).build()
-                    )
-            );
+//            task.getModels().get().forEach(model ->
+//                    modelEnumBuilder.addEnumConstant(
+//                            model.getEnumName(),
+//                            TypeSpec.anonymousClassBuilder(
+//                                    "$S, $S, $T.$L",
+//                                    model.getModelName(),
+//                                    model.getVersion(),
+//                                    quantizationCn,
+//                                    model.getQuantization()
+//                            ).build()
+//                    )
+//            );
 
             modelEnumBuilder.addMethod(createGetter("getModelName", ClassName.get(String.class), "modelName"));
             modelEnumBuilder.addMethod(createGetter("getVersion", ClassName.get(String.class), "version"));
@@ -300,67 +319,67 @@ public abstract class GenerateVisionProviderTask extends DefaultTask {
             ClassName futureCn,
             ClassName nonNullCn
     ) {
-        for (VisionTask task : tasks) {
-            String taskName = task.getName();
-            if (taskName.equals("FaceStylizer")) continue;
-
-            ClassName modelEnumCn = ClassName.get("", taskName + "Model");
-            ClassName settingsRecordCn = ClassName.get("", taskName + "Settings");
-            ClassName internalSettingsCn = ClassName.get("", taskName + "SettingsInternal");
-            ClassName taskReturnCn = ClassName.get("com.google.mediapipe.tasks.vision." + taskName.toLowerCase(), taskName);
-            ParameterizedTypeName futureOfTask = ParameterizedTypeName.get(futureCn, taskReturnCn);
-            String defaultModel = task.getDefaultModel().get();
-
-            classBuilder.addMethod(
-                    MethodSpec.methodBuilder("create" + taskName)
-                            .addModifiers(Modifier.PUBLIC)
-                            .returns(futureOfTask)
-                            .addStatement("return create" + taskName + "Impl($T.$L, new $T())",
-                                    modelEnumCn, defaultModel, internalSettingsCn)
-                            .build()
-            );
-
-            classBuilder.addMethod(
-                    MethodSpec.methodBuilder("create" + taskName)
-                            .addModifiers(Modifier.PUBLIC)
-                            .addParameter(ParameterSpec.builder(modelEnumCn, "model").addAnnotation(nonNullCn).build())
-                            .returns(futureOfTask)
-                            .addStatement("return create" + taskName + "Impl(model, new $T())", internalSettingsCn)
-                            .build()
-            );
-
-            String settingsParams = switch (taskName) {
-                case "FaceDetector" ->
-                        "settings.minDetectionConfidence(), settings.minSuppressionThreshold(), settings.runningMode()";
-                case "FaceLandmarker" ->
-                        "settings.minFaceDetectionConfidence(), settings.minFacePresenceConfidence(), settings.minTrackingConfidence(), settings.numFaces(), settings.outputFaceBlendshapes(), settings.outputFacialTransformationMatrixes(), settings.runningMode()";
-                case "GestureRecognizer" ->
-                        "settings.minHandDetectionConfidence(), settings.minHandPresenceConfidence(), settings.minTrackingConfidence(), settings.numHands(), settings.cannedGesturesClassifierOptions(), settings.customGesturesClassifierOptions(), settings.runningMode()";
-                case "HandLandmarker" ->
-                        "settings.minHandDetectionConfidence(), settings.minHandPresenceConfidence(), settings.minTrackingConfidence(), settings.numHands(), settings.runningMode()";
-                case "ImageClassifier", "ObjectDetector" ->
-                        "settings.displayNamesLocale(), settings.maxResults(), settings.scoreThreshold(), settings.categoryAllowlist(), settings.categoryDenylist(), settings.runningMode()";
-                case "ImageEmbedder" ->
-                        "settings.l2Normalize(), settings.quantize(), settings.runningMode()";
-                case "PoseLandmarker" ->
-                        "settings.minPoseDetectionConfidence(), settings.minPosePresenceConfidence(), settings.minTrackingConfidence(), settings.numPoses(), settings.outputSegmentationMasks(), settings.runningMode()";
-                case "InteractiveSegmenter" ->
-                        "settings.outputConfidenceMasks(), settings.outputCategoryMask(), settings.runningMode()";
-                case "ImageSegmenter" ->
-                        "settings.outputConfidenceMasks(), settings.outputCategoryMask(), settings.displayNamesLocale(), settings.runningMode()";
-                default -> "";
-            };
-
-            classBuilder.addMethod(
-                    MethodSpec.methodBuilder("create" + taskName)
-                            .addModifiers(Modifier.PUBLIC)
-                            .addParameter(ParameterSpec.builder(modelEnumCn, "model").addAnnotation(nonNullCn).build())
-                            .addParameter(ParameterSpec.builder(settingsRecordCn, "settings").addAnnotation(nonNullCn).build())
-                            .returns(futureOfTask)
-                            .addStatement("return create" + taskName + "Impl(model, new $T(" + settingsParams + "))", internalSettingsCn)
-                            .build()
-            );
-        }
+//        for (VisionTask task : tasks) {
+//            String taskName = task.getName();
+//            if (taskName.equals("FaceStylizer")) continue;
+//
+//            ClassName modelEnumCn = ClassName.get("", taskName + "Model");
+//            ClassName settingsRecordCn = ClassName.get("", taskName + "Settings");
+//            ClassName internalSettingsCn = ClassName.get("", taskName + "SettingsInternal");
+//            ClassName taskReturnCn = ClassName.get("com.google.mediapipe.tasks.vision." + taskName.toLowerCase(), taskName);
+//            ParameterizedTypeName futureOfTask = ParameterizedTypeName.get(futureCn, taskReturnCn);
+//            String defaultModel = task.getDefaultModel().get();
+//
+//            classBuilder.addMethod(
+//                    MethodSpec.methodBuilder("create" + taskName)
+//                            .addModifiers(Modifier.PUBLIC)
+//                            .returns(futureOfTask)
+//                            .addStatement("return create" + taskName + "Impl($T.$L, new $T())",
+//                                    modelEnumCn, defaultModel, internalSettingsCn)
+//                            .build()
+//            );
+//
+//            classBuilder.addMethod(
+//                    MethodSpec.methodBuilder("create" + taskName)
+//                            .addModifiers(Modifier.PUBLIC)
+//                            .addParameter(ParameterSpec.builder(modelEnumCn, "model").addAnnotation(nonNullCn).build())
+//                            .returns(futureOfTask)
+//                            .addStatement("return create" + taskName + "Impl(model, new $T())", internalSettingsCn)
+//                            .build()
+//            );
+//
+//            String settingsParams = switch (taskName) {
+//                case "FaceDetector" ->
+//                        "settings.minDetectionConfidence(), settings.minSuppressionThreshold(), settings.runningMode()";
+//                case "FaceLandmarker" ->
+//                        "settings.minFaceDetectionConfidence(), settings.minFacePresenceConfidence(), settings.minTrackingConfidence(), settings.numFaces(), settings.outputFaceBlendshapes(), settings.outputFacialTransformationMatrixes(), settings.runningMode()";
+//                case "GestureRecognizer" ->
+//                        "settings.minHandDetectionConfidence(), settings.minHandPresenceConfidence(), settings.minTrackingConfidence(), settings.numHands(), settings.cannedGesturesClassifierOptions(), settings.customGesturesClassifierOptions(), settings.runningMode()";
+//                case "HandLandmarker" ->
+//                        "settings.minHandDetectionConfidence(), settings.minHandPresenceConfidence(), settings.minTrackingConfidence(), settings.numHands(), settings.runningMode()";
+//                case "ImageClassifier", "ObjectDetector" ->
+//                        "settings.displayNamesLocale(), settings.maxResults(), settings.scoreThreshold(), settings.categoryAllowlist(), settings.categoryDenylist(), settings.runningMode()";
+//                case "ImageEmbedder" ->
+//                        "settings.l2Normalize(), settings.quantize(), settings.runningMode()";
+//                case "PoseLandmarker" ->
+//                        "settings.minPoseDetectionConfidence(), settings.minPosePresenceConfidence(), settings.minTrackingConfidence(), settings.numPoses(), settings.outputSegmentationMasks(), settings.runningMode()";
+//                case "InteractiveSegmenter" ->
+//                        "settings.outputConfidenceMasks(), settings.outputCategoryMask(), settings.runningMode()";
+//                case "ImageSegmenter" ->
+//                        "settings.outputConfidenceMasks(), settings.outputCategoryMask(), settings.displayNamesLocale(), settings.runningMode()";
+//                default -> "";
+//            };
+//
+//            classBuilder.addMethod(
+//                    MethodSpec.methodBuilder("create" + taskName)
+//                            .addModifiers(Modifier.PUBLIC)
+//                            .addParameter(ParameterSpec.builder(modelEnumCn, "model").addAnnotation(nonNullCn).build())
+//                            .addParameter(ParameterSpec.builder(settingsRecordCn, "settings").addAnnotation(nonNullCn).build())
+//                            .returns(futureOfTask)
+//                            .addStatement("return create" + taskName + "Impl(model, new $T(" + settingsParams + "))", internalSettingsCn)
+//                            .build()
+//            );
+//        }
     }
 
     private MethodSpec createGetter(String name, TypeName returnType, String field) {

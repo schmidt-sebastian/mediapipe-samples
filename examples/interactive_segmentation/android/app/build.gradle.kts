@@ -9,30 +9,31 @@ plugins {
 }
 
 tasks.named<GenerateVisionProviderTask>("generateVisionProvider") {
-    tasksConfiguration.get().apply {
-        // Use the register method to configure each task
+    outputDir.set(layout.buildDirectory.dir("generated/source/main/java"))
+
+    tasksConfiguration.apply {
         register("FaceDetector") {
-            defaultModel.set("BLAZE_FACE_SHORT_RANGE")
-            models.set(listOf(
-                VisionModel("BLAZE_FACE_SHORT_RANGE", "blaze_face_short_range", "1.0")
-            ))
+//            defaultModel.set("BLAZE_FACE_SHORT_RANGE")
+//            models.set(listOf(
+//                VisionModel("BLAZE_FACE_SHORT_RANGE", "blaze_face_short_range", "1.0")
+//            ))
         }
 
-        register("FaceLandmarker") {
-            defaultModel.set("FACE_LANDMARKER")
-            models.set(listOf(
-                VisionModel("FACE_LANDMARKER", "face_landmarker", "1.0"),
-                VisionModel("FACE_LANDMARKER_V2_WITH_BLENDSHAPES", "face_landmarker_v2_with_blendshapes", "2.0")
-            ))
-        }
-
-        register("ImageClassifier") {
-            defaultModel.set("EFFICIENTNET_LITE0")
-            models.set(listOf(
-                VisionModel("EFFICIENTNET_LITE0", "efficientnet_lite0", "1.0", "FLOAT32"),
-                VisionModel("EFFICIENTNET_LITE2", "efficientnet_lite2", "1.0", "FLOAT32")
-            ))
-        }
+//        register("FaceLandmarker") {
+//            defaultModel.set("FACE_LANDMARKER")
+//            models.set(listOf(
+//                VisionModel("FACE_LANDMARKER", "face_landmarker", "1.0"),
+//                VisionModel("FACE_LANDMARKER_V2_WITH_BLENDSHAPES", "face_landmarker_v2_with_blendshapes", "2.0")
+//            ))
+//        }
+//
+//        register("ImageClassifier") {
+//            defaultModel.set("EFFICIENTNET_LITE0")
+//            models.set(listOf(
+//                VisionModel("EFFICIENTNET_LITE0", "efficientnet_lite0", "1.0", "FLOAT32"),
+//                VisionModel("EFFICIENTNET_LITE2", "efficientnet_lite2", "1.0", "FLOAT32")
+//            ))
+//        }
     }
 }
 
