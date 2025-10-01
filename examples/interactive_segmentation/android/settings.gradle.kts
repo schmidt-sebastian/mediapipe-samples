@@ -22,19 +22,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "Interactive Segmentation"
 include(":app")
-include(":npu")
-include(":npu_some-vendor")
 
-include(":npu_qualcomm")
-
-include(":npu_qualcomm_hexagon-v66")
-
-include(":npu_qualcomm_hexagon-v68")
-
-include(":npu_qualcomm_hexagon-v69")
-
-include(":npu_qualcomm_hexagon-v73")
-
-include(":npu_qualcomm_hexagon-v75")
-
-include(":npu_qualcomm_hexagon-v79")

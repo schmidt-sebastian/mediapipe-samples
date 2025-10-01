@@ -1,18 +1,39 @@
-import com.google.mediapipe.npu.CreateNpuModuleTask
+import com.google.mediapipe.tasks.vision.provider.GenerateVisionProviderTask
+import com.google.mediapipe.tasks.vision.provider.VisionModel
 
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("de.undercouch.download")
-    id("com.google.mediapipe.npu")
+    id("com.google.mediapipe.tasks.vision.provider")
 }
 
-//tasks.register<CreateNpuModuleTask>("createNpuFeatureModule") {
-//    group = "mediapipe"
-//    description = "Creates MediaPipe NPU helper modules."
-//}
-tasks.named<CreateNpuModuleTask>("createNpuFeatureModule") {
-    qualcommLibDirectory = "/Users/mrschmidt/Downloads/qairt/2.38.0.250901/lib"
+tasks.named<GenerateVisionProviderTask>("generateVisionProvider") {
+    tasksConfiguration.get().apply {
+        // Use the register method to configure each task
+        register("FaceDetector") {
+            defaultModel.set("BLAZE_FACE_SHORT_RANGE")
+            models.set(listOf(
+                VisionModel("BLAZE_FACE_SHORT_RANGE", "blaze_face_short_range", "1.0")
+            ))
+        }
+
+        register("FaceLandmarker") {
+            defaultModel.set("FACE_LANDMARKER")
+            models.set(listOf(
+                VisionModel("FACE_LANDMARKER", "face_landmarker", "1.0"),
+                VisionModel("FACE_LANDMARKER_V2_WITH_BLENDSHAPES", "face_landmarker_v2_with_blendshapes", "2.0")
+            ))
+        }
+
+        register("ImageClassifier") {
+            defaultModel.set("EFFICIENTNET_LITE0")
+            models.set(listOf(
+                VisionModel("EFFICIENTNET_LITE0", "efficientnet_lite0", "1.0", "FLOAT32"),
+                VisionModel("EFFICIENTNET_LITE2", "efficientnet_lite2", "1.0", "FLOAT32")
+            ))
+        }
+    }
 }
 
 android {
