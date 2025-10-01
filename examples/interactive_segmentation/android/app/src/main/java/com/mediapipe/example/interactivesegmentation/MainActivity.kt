@@ -46,7 +46,7 @@ class MainActivity : AppCompatActivity(), InteractiveSegmentationHelper.Interact
     // Update UI
     private val takePictureLauncher =
         registerForActivityResult(ActivityResultContracts.TakePicture()) { isSuccess ->
-            System.out.println(AppBuildInfo.VERSION)
+
             if (isSuccess && pictureUri != null) {
                 val bitmap = pictureUri!!.toBitmap()
                 activityMainBinding.imgSegmentation.setImageBitmap(bitmap)
