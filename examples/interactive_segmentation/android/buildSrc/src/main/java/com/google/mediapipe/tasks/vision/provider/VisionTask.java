@@ -27,17 +27,19 @@ public abstract class VisionTask {
         return name;
     }
 
-//    /**
-//     * A Gradle Property that will hold the enum name of the default model
-//     * for this task's parameter-less create() method.
-//     * @return The Property for the default model name.
-//     */
-//    public abstract Property<String> getDefaultModel();
-//
-//    /**
-//     * The list of model configurations to be included in the generated enum.
-//     * By making this abstract, you let Gradle provide the ListProperty implementation.
-//     * @return The ListProperty for the models.
-//     */
-//    public abstract ListProperty<VisionModel> getModels();
+    /**
+     * A Gradle Property that will hold the enum name of the default model
+     * for this task's parameter-less create() method.
+     * @return The Property for the default model name.
+     */
+    @Input
+    public abstract Property<String> getDefaultModel();
+
+    /**
+     * The list of model configurations to be included in the generated enum.
+     * By making this abstract, you let Gradle provide the ListProperty implementation.
+     * @return The ListProperty for the models.
+     */
+    @Input
+    public abstract ListProperty<String> getModels();
 }

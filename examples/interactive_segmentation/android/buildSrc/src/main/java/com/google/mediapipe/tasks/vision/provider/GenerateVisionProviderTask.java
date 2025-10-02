@@ -87,11 +87,11 @@ public abstract class GenerateVisionProviderTask extends DefaultTask {
         );
 
         // --- Generate sections for each task from the Gradle configuration ---
-//        NamedDomainObjectContainer<VisionTask> tasks = getTasksConfiguration().get();
-//
-//        generateModels(classBuilder, tasks, visionModelCn, quantizationCn);
-//        generateSettings(classBuilder, tasks, runningModeCn, listCn, setCn, stringCn, nonNullCn, classifierOptionsCn);
-//        generateCreators(classBuilder, tasks, futureCn, nonNullCn);
+        NamedDomainObjectContainer<VisionTask> tasks = getTasksConfiguration();
+
+        generateModels(classBuilder, tasks, visionModelCn, quantizationCn);
+        generateSettings(classBuilder, tasks, runningModeCn, listCn, setCn, stringCn, nonNullCn, classifierOptionsCn);
+        generateCreators(classBuilder, tasks, futureCn, nonNullCn);
 
         // --- Write the generated class to a file ---
         JavaFile javaFile = JavaFile.builder(basePackage, classBuilder.build())
@@ -130,18 +130,20 @@ public abstract class GenerateVisionProviderTask extends DefaultTask {
                             .build()
             );
 
-//            task.getModels().get().forEach(model ->
-//                    modelEnumBuilder.addEnumConstant(
-//                            model.getEnumName(),
-//                            TypeSpec.anonymousClassBuilder(
-//                                    "$S, $S, $T.$L",
-//                                    model.getModelName(),
-//                                    model.getVersion(),
-//                                    quantizationCn,
-//                                    model.getQuantization()
-//                            ).build()
-//                    )
-//            );
+            task.getModels().get().forEach(modelName -> {
+                        VisionModel model = VisionModel.fromCanonicalName(modelName);
+                        modelEnumBuilder.addEnumConstant(
+                                model.getEnumName(),
+                                TypeSpec.anonymousClassBuilder(
+                                        "$S, $S, $T.$L",
+                                        model.getModelName(),
+                                        model.getVersion(),
+                                        quantizationCn,
+                                        model.getQuantization()
+                                ).build()
+                        );
+                    }
+            );
 
             modelEnumBuilder.addMethod(createGetter("getModelName", ClassName.get(String.class), "modelName"));
             modelEnumBuilder.addMethod(createGetter("getVersion", ClassName.get(String.class), "version"));

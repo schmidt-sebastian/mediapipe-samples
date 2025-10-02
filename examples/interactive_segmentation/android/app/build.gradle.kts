@@ -13,25 +13,25 @@ tasks.named<GenerateVisionProviderTask>("generateVisionProvider") {
 
     tasksConfiguration.apply {
         register("FaceDetector") {
-//            defaultModel.set("BLAZE_FACE_SHORT_RANGE")
-//            models.set(listOf(
-//                VisionModel("BLAZE_FACE_SHORT_RANGE", "blaze_face_short_range", "1.0")
-//            ))
+            defaultModel.set("blaze_face_short_range_v1_fp32")
+            models.set(listOf(
+                "blaze_face_short_range_v1_fp32"
+            ))
         }
-
+//
 //        register("FaceLandmarker") {
-//            defaultModel.set("FACE_LANDMARKER")
+//            defaultModel.set("face_landmarker_v1_fp32")
 //            models.set(listOf(
-//                VisionModel("FACE_LANDMARKER", "face_landmarker", "1.0"),
-//                VisionModel("FACE_LANDMARKER_V2_WITH_BLENDSHAPES", "face_landmarker_v2_with_blendshapes", "2.0")
+//                "face_landmarker_v1_fp32",
+//                "face_landmarker_with_blendshapes_v2_fp32"
 //            ))
 //        }
 //
 //        register("ImageClassifier") {
-//            defaultModel.set("EFFICIENTNET_LITE0")
+//            defaultModel.set("efficientnet_lite0_v0_fp32")
 //            models.set(listOf(
-//                VisionModel("EFFICIENTNET_LITE0", "efficientnet_lite0", "1.0", "FLOAT32"),
-//                VisionModel("EFFICIENTNET_LITE2", "efficientnet_lite2", "1.0", "FLOAT32")
+//                "efficientnet_lite0_v0_fp32",
+//                "efficientnet_lite2_v2_fp32"
 //            ))
 //        }
     }
