@@ -9,6 +9,7 @@ plugins {
 
 tasks.named<GenerateVisionProviderTask>("generateVisionProvider") {
     outputDir.set(layout.buildDirectory.dir("generated/source/main/kotlin"))
+    aipackModulesDir.set(layout.buildDirectory.dir("generated/aipack-modules"))
 
     tasksConfiguration.apply {
         register("FaceDetector") {

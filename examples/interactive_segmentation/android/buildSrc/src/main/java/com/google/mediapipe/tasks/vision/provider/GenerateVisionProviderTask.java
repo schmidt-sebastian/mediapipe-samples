@@ -10,6 +10,7 @@ import com.squareup.kotlinpoet.ParameterizedTypeName;
 import com.squareup.kotlinpoet.PropertySpec;
 import com.squareup.kotlinpoet.TypeName;
 import com.squareup.kotlinpoet.TypeSpec;
+
 import org.gradle.api.DefaultTask;
 import org.gradle.api.NamedDomainObjectContainer;
 import org.gradle.api.file.DirectoryProperty;
@@ -18,20 +19,40 @@ import org.gradle.api.tasks.Nested;
 import org.gradle.api.tasks.OutputDirectory;
 import org.gradle.api.tasks.TaskAction;
 
+import org.gradle.api.tasks.Optional;
+
 import javax.inject.Inject;
+
+import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+
 import kotlin.jvm.JvmOverloads;
 import kotlin.jvm.JvmStatic;
+
 
 public abstract class GenerateVisionProviderTask extends DefaultTask {
     private static final String PACKAGE_NAME = "com.google.mediapipe.tasks.vision.provider";
     private final NamedDomainObjectContainer<VisionTask> tasksConfiguration;
 
+    private static final String MEDIAPIPE_GCS_URL_BASE = "https://storage.googleapis.com/mediapipe-tasks/vision/";
+
+
     @OutputDirectory
     public abstract DirectoryProperty getOutputDir();
+
+    @OutputDirectory
+    @Optional
+    public abstract DirectoryProperty getAipackModulesDir();
 
     @Inject
     public GenerateVisionProviderTask(ObjectFactory objectFactory) {
@@ -91,6 +112,11 @@ public abstract class GenerateVisionProviderTask extends DefaultTask {
         System.err.println("Output dir: " + getOutputDir().get().getAsFile());
         getOutputDir().get().getAsFile().mkdirs();
         fileSpec.writeTo(getOutputDir().get().getAsFile());
+
+        // --- Stage 2: Generate AI Pack Modules (New Logic) ---
+        if (getAipackModulesDir().isPresent()) {
+            generateAIPackModules();
+        }
     }
 
     private void generateSettings(
@@ -160,7 +186,7 @@ public abstract class GenerateVisionProviderTask extends DefaultTask {
                 case "ObjectDetector":
                     float scoreThreshold = taskName.equals("ImageClassifier") ? 0.0f : 0.5f;
                     taskSpecificParamBuilders = List.of(
-                            ParameterSpec.builder("displayNamesLocale",KOTLIN_STRING_CN).defaultValue("%T.DEFAULT_DISPLAY_NAMES_LOCALE", visionProviderBaseCn),
+                            ParameterSpec.builder("displayNamesLocale", KOTLIN_STRING_CN).defaultValue("%T.DEFAULT_DISPLAY_NAMES_LOCALE", visionProviderBaseCn),
                             ParameterSpec.builder("maxResults", Integer.TYPE).defaultValue("%T.UNLIMITED_RESULTS", visionProviderBaseCn),
                             ParameterSpec.builder("scoreThreshold", Float.TYPE).defaultValue("%Lf", scoreThreshold),
                             // FIX: Use the list type here
@@ -197,7 +223,7 @@ public abstract class GenerateVisionProviderTask extends DefaultTask {
                     taskSpecificParamBuilders = List.of(
                             ParameterSpec.builder("outputConfidenceMasks", Boolean.TYPE).defaultValue("%T.DEFAULT_OUTPUT_CONFIDENCE_MASKS", visionProviderBaseCn),
                             ParameterSpec.builder("outputCategoryMask", Boolean.TYPE).defaultValue("%T.DEFAULT_OUTPUT_CATEGORY_MASK", visionProviderBaseCn),
-                            ParameterSpec.builder("displayNamesLocale",KOTLIN_STRING_CN).defaultValue("%T.DEFAULT_DISPLAY_NAMES_LOCALE", visionProviderBaseCn),
+                            ParameterSpec.builder("displayNamesLocale", KOTLIN_STRING_CN).defaultValue("%T.DEFAULT_DISPLAY_NAMES_LOCALE", visionProviderBaseCn),
                             ParameterSpec.builder("runningMode", runningModeCn).defaultValue("%T.DEFAULT_RUNNING_MODE", visionProviderBaseCn)
                     );
                     break;
@@ -248,7 +274,6 @@ public abstract class GenerateVisionProviderTask extends DefaultTask {
         }
         String resultPackage = "com.google.mediapipe.tasks.vision" + "." + resultTaskName.toLowerCase();
         ClassName resultCn = new ClassName(resultPackage, resultTaskName + "Result");
-        // FIX: Add the second generic type argument (MPImage) for the listener.
         ClassName mpImageCn = new ClassName("com.google.mediapipe.framework.image", "MPImage");
         return ParameterizedTypeName.get(resultListenerBaseCn, resultCn, mpImageCn);
     }
@@ -271,15 +296,24 @@ public abstract class GenerateVisionProviderTask extends DefaultTask {
             String defaultModel = task.getDefaultModel().get();
 
             String settingsParams = switch (taskName) {
-                case "FaceDetector" -> "settings.minDetectionConfidence, settings.minSuppressionThreshold, settings.runningMode";
-                case "FaceLandmarker" -> "settings.minFaceDetectionConfidence, settings.minFacePresenceConfidence, settings.minTrackingConfidence, settings.numFaces, settings.outputFaceBlendshapes, settings.outputFacialTransformationMatrixes, settings.runningMode";
-                case "GestureRecognizer" -> "settings.minHandDetectionConfidence, settings.minHandPresenceConfidence, settings.minTrackingConfidence, settings.numHands, settings.cannedGesturesClassifierOptions, settings.customGesturesClassifierOptions, settings.runningMode";
-                case "HandLandmarker" -> "settings.minHandDetectionConfidence, settings.minHandPresenceConfidence, settings.minTrackingConfidence, settings.numHands, settings.runningMode";
-                case "ImageClassifier", "ObjectDetector" -> "settings.displayNamesLocale, settings.maxResults, settings.scoreThreshold, settings.categoryAllowlist, settings.categoryDenylist, settings.runningMode";
-                case "ImageEmbedder" -> "settings.l2Normalize, settings.quantize, settings.runningMode";
-                case "PoseLandmarker" -> "settings.minPoseDetectionConfidence, settings.minPosePresenceConfidence, settings.minTrackingConfidence, settings.numPoses, settings.outputSegmentationMasks, settings.runningMode";
-                case "InteractiveSegmenter" -> "settings.outputConfidenceMasks, settings.outputCategoryMask, settings.runningMode";
-                case "ImageSegmenter" -> "settings.outputConfidenceMasks, settings.outputCategoryMask, settings.displayNamesLocale, settings.runningMode";
+                case "FaceDetector" ->
+                        "settings.minDetectionConfidence, settings.minSuppressionThreshold, settings.runningMode";
+                case "FaceLandmarker" ->
+                        "settings.minFaceDetectionConfidence, settings.minFacePresenceConfidence, settings.minTrackingConfidence, settings.numFaces, settings.outputFaceBlendshapes, settings.outputFacialTransformationMatrixes, settings.runningMode";
+                case "GestureRecognizer" ->
+                        "settings.minHandDetectionConfidence, settings.minHandPresenceConfidence, settings.minTrackingConfidence, settings.numHands, settings.cannedGesturesClassifierOptions, settings.customGesturesClassifierOptions, settings.runningMode";
+                case "HandLandmarker" ->
+                        "settings.minHandDetectionConfidence, settings.minHandPresenceConfidence, settings.minTrackingConfidence, settings.numHands, settings.runningMode";
+                case "ImageClassifier", "ObjectDetector" ->
+                        "settings.displayNamesLocale, settings.maxResults, settings.scoreThreshold, settings.categoryAllowlist, settings.categoryDenylist, settings.runningMode";
+                case "ImageEmbedder" ->
+                        "settings.l2Normalize, settings.quantize, settings.runningMode";
+                case "PoseLandmarker" ->
+                        "settings.minPoseDetectionConfidence, settings.minPosePresenceConfidence, settings.minTrackingConfidence, settings.numPoses, settings.outputSegmentationMasks, settings.runningMode";
+                case "InteractiveSegmenter" ->
+                        "settings.outputConfidenceMasks, settings.outputCategoryMask, settings.runningMode";
+                case "ImageSegmenter" ->
+                        "settings.outputConfidenceMasks, settings.outputCategoryMask, settings.displayNamesLocale, settings.runningMode";
                 default -> "";
             };
 
@@ -291,7 +325,6 @@ public abstract class GenerateVisionProviderTask extends DefaultTask {
                             .addParameter(
                                     ParameterSpec.builder("model", modelEnumCn)
                                             .addAnnotation(nonNullCn)
-                                            // FIX: Convert model string to uppercase to match enum constant name
                                             .defaultValue("%T.%L", modelEnumCn, defaultModel.toUpperCase())
                                             .build()
                             )
@@ -306,6 +339,7 @@ public abstract class GenerateVisionProviderTask extends DefaultTask {
             );
         }
     }
+
     private static final ClassName KOTLIN_STRING_CN = new ClassName("kotlin", "String");
 
     private void generateModels(
@@ -358,5 +392,51 @@ public abstract class GenerateVisionProviderTask extends DefaultTask {
                             });
             classBuilder.addType(modelEnumBuilder.build());
         }
+    }
+
+    private void generateAIPackModules() throws IOException {
+        File modulesDir = getAipackModulesDir().get().getAsFile();
+        System.err.println("Output dir for AI Pack modules: " + modulesDir);
+        modulesDir.mkdirs();
+
+        for (VisionTask task : getTasksConfiguration()) {
+            for (String modelName : task.getModels().get()) {
+                String moduleDirName = "aipack-" + modelName.toLowerCase().replace("_", "-");
+                File moduleDir = new File(modulesDir, moduleDirName);
+
+                // 1. Create the AI Pack directory structure
+                File assetsDir = new File(moduleDir, "src/main/assets");
+                assetsDir.mkdirs();
+
+                // 2. Download the model file directly into the assets folder
+                String modelFileName = modelName + ".tflite";
+                URL modelUrl = new URL(MEDIAPIPE_GCS_URL_BASE + modelFileName);
+                Path destinationPath = new File(assetsDir, modelFileName).toPath();
+                System.out.println("Downloading " + modelUrl + " to " + destinationPath);
+                try (InputStream in = modelUrl.openStream()) {
+                    Files.copy(in, destinationPath, StandardCopyOption.REPLACE_EXISTING);
+                } catch (IOException e) {
+                    System.err.println("Failed to download model: " + modelName);
+                    throw e;
+                }
+
+                // 3. Generate the build.gradle.kts for the AI Pack
+                Path buildScriptPath = moduleDir.toPath().resolve("build.gradle.kts");
+                String buildScriptContent = generateAIPackBuildScript(moduleDirName);
+                Files.writeString(buildScriptPath, buildScriptContent, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+            }
+        }
+    }
+
+    private String generateAIPackBuildScript(String packName) {
+        return "plugins {\n" +
+                "    id(\"com.android.ai-pack\")\n" +
+                "}\n\n" +
+                "aiPack {\n" +
+                "    packName = \"" + packName + "\"\n" +
+                "    dynamicDelivery {\n" +
+                "        deliveryType = \"on-demand\"\n" +
+                "    }\n" +
+                "}\n";
     }
 }
