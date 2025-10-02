@@ -22,13 +22,12 @@ import com.google.mediapipe.framework.image.BitmapImageBuilder;
 import com.google.mediapipe.framework.image.ByteBufferExtractor;
 import com.google.mediapipe.framework.image.MPImage;
 import com.google.mediapipe.tasks.components.containers.NormalizedKeypoint;
-import com.google.mediapipe.tasks.core.BaseOptions;
 import com.google.mediapipe.tasks.vision.core.RunningMode;
 import com.google.mediapipe.tasks.vision.imagesegmenter.ImageSegmenter;
 import com.google.mediapipe.tasks.vision.imagesegmenter.ImageSegmenterResult;
 import com.google.mediapipe.tasks.vision.interactivesegmenter.InteractiveSegmenter;
 import com.google.mediapipe.tasks.vision.interactivesegmenter.InteractiveSegmenter.RegionOfInterest;
-import com.mediapipe.tasks.vision.provider.VisionProvider;
+import com.google.mediapipe.tasks.vision.provider.VisionProvider;
 import java.nio.ByteBuffer;
 import java.util.concurrent.ExecutionException;
 
@@ -62,7 +61,9 @@ public class InteractiveSegmentationHelper {
         VisionProvider provider = VisionProvider.create(context);
 
         try {
-            VisionProvider.InteractiveSegmenterSettings settings = new VisionProvider.InteractiveSegmenterSettings().withRunningMode(RunningMode.IMAGE);
+            VisionProvider.InteractiveSegmenterSettings settings = new VisionProvider.InteractiveSegmenterSettings()
+                    .withResultListener(this::returnSegmenterResults)
+                    .withErrorListener(this::returnSegmenterError);
             interactiveSegmenter = provider.createInteractiveSegmenter(VisionProvider.InteractiveSegmenterModel.MAGIC_EYE_V1_FP32, settings).get();
         } catch (IllegalStateException | ExecutionException | InterruptedException e) {
             listener.onError(
@@ -111,23 +112,9 @@ public class InteractiveSegmentationHelper {
         MPImage mpImage = new BitmapImageBuilder(inputImage).build();
 
         // The segmentAsync method requires a listener.
-        interactiveSegmenter.segmentAsync(
+        interactiveSegmenter.segmentWithResultListener(
             mpImage,
-            roi,
-            new ImageSegmenter.ImageSegmenterResultListener() {
-                @Override
-                public void run(
-                    ImageSegmenterResult result,
-                    MPImage image
-                ) {
-                    returnSegmenterResults(result, image);
-                }
-
-                @Override
-                public void onError(RuntimeException error) {
-                    returnSegmenterError(error);
-                }
-            }
+            roi
         );
     }
 

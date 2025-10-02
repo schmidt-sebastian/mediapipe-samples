@@ -33,7 +33,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.Date
-import com.myapp.info.AppBuildInfo
+
 class MainActivity : AppCompatActivity(), InteractiveSegmentationHelper.InteractiveSegmentationListener {
 
     private lateinit var activityMainBinding: ActivityMainBinding

@@ -46,7 +46,7 @@ tasks.named<GenerateVisionProviderTask>("generateVisionProvider") {
 
 android {
     namespace = "com.mediapipe.example.interactivesegmentation"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.mediapipe.example.interactivesegmentation"
@@ -98,7 +98,7 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
 
     // MediaPipe Library
-    implementation("com.google.mediapipe:tasks-vision:0.10.28")
+    implementation("com.google.mediapipe:tasks-vision:0.10.29")
     implementation("com.google.android.play:feature-delivery:2.1.0")
 
     testImplementation("junit:junit:4.13.2")

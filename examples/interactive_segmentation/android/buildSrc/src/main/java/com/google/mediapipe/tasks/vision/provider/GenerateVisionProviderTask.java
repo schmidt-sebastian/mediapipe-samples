@@ -93,62 +93,6 @@ public abstract class GenerateVisionProviderTask extends DefaultTask {
         fileSpec.writeTo(getOutputDir().get().getAsFile());
     }
 
-    private void generateModels(
-            TypeSpec.Builder classBuilder,
-            Iterable<VisionTask> tasks,
-            ClassName visionModelCn,
-            ClassName quantizationCn) {
-        for (VisionTask task : tasks) {
-            TypeSpec.Builder modelEnumBuilder =
-                    TypeSpec.enumBuilder(task.getName() + "Model")
-                            .addModifiers(KModifier.PUBLIC)
-                            .addSuperinterface(visionModelCn, CodeBlock.of(""))
-                            .primaryConstructor(
-                                    FunSpec.constructorBuilder()
-                                            .addParameter("modelName", String.class)
-                                            .addParameter("version", String.class)
-                                            .addParameter("quantization", quantizationCn)
-                                            .build());
-
-            // These properties implement getModelName(), getVersion(), and getQuantization()
-            modelEnumBuilder.addProperty(
-                    PropertySpec.builder("modelName", String.class, KModifier.OVERRIDE)
-                            .initializer("modelName")
-                            .build());
-            modelEnumBuilder.addProperty(
-                    PropertySpec.builder("version", String.class, KModifier.OVERRIDE)
-                            .initializer("version")
-                            .build());
-            modelEnumBuilder.addProperty(
-                    PropertySpec.builder("quantization", quantizationCn, KModifier.OVERRIDE)
-                            .initializer("quantization")
-                            .build());
-
-            modelEnumBuilder.addFunction(
-                    FunSpec.builder("getEnumName")
-                            .addModifiers(KModifier.OVERRIDE)
-                            .returns(String.class)
-                            .addStatement("return name")
-                            .build());
-
-            task.getModels()
-                    .get()
-                    .forEach(
-                            modelName -> {
-                                VisionModel model = VisionModel.fromCanonicalName(modelName);
-                                modelEnumBuilder.addEnumConstant(
-                                        model.getEnumName(),
-                                        TypeSpec.anonymousClassBuilder()
-                                                .addSuperclassConstructorParameter("%S", model.getModelName())
-                                                .addSuperclassConstructorParameter("%S", model.getVersion())
-                                                .addSuperclassConstructorParameter(
-                                                        "%T.%L", quantizationCn, model.getQuantization())
-                                                .build());
-                            });
-            classBuilder.addType(modelEnumBuilder.build());
-        }
-    }
-
     private void generateSettings(
             TypeSpec.Builder classBuilder,
             Iterable<VisionTask> tasks,
@@ -156,7 +100,7 @@ public abstract class GenerateVisionProviderTask extends DefaultTask {
             ClassName classifierOptionsCn
     ) {
         ClassName visionProviderBaseCn = new ClassName(PACKAGE_NAME, "VisionProviderBase");
-        ParameterizedTypeName stringSetType = ParameterizedTypeName.get(new ClassName("java.util", "Set"), new ClassName("java.lang", "String"));
+        ParameterizedTypeName stringListType = ParameterizedTypeName.get(new ClassName("kotlin.collections", "List"), new ClassName("kotlin", "String"));
 
         // Define common listener and type ClassNames
         ClassName errorListenerCn = new ClassName("com.google.mediapipe.tasks.core", "ErrorListener");
@@ -216,11 +160,12 @@ public abstract class GenerateVisionProviderTask extends DefaultTask {
                 case "ObjectDetector":
                     float scoreThreshold = taskName.equals("ImageClassifier") ? 0.0f : 0.5f;
                     taskSpecificParamBuilders = List.of(
-                            ParameterSpec.builder("displayNamesLocale",new ClassName("java.lang", "String").copy(true, Collections.emptyList())).defaultValue("%T.DEFAULT_DISPLAY_NAMES_LOCALE", visionProviderBaseCn),
+                            ParameterSpec.builder("displayNamesLocale",KOTLIN_STRING_CN).defaultValue("%T.DEFAULT_DISPLAY_NAMES_LOCALE", visionProviderBaseCn),
                             ParameterSpec.builder("maxResults", Integer.TYPE).defaultValue("%T.UNLIMITED_RESULTS", visionProviderBaseCn),
                             ParameterSpec.builder("scoreThreshold", Float.TYPE).defaultValue("%Lf", scoreThreshold),
-                            ParameterSpec.builder("categoryAllowlist", stringSetType.copy(true, Collections.emptyList())).defaultValue("null"),
-                            ParameterSpec.builder("categoryDenylist", stringSetType.copy(true, Collections.emptyList())).defaultValue("null"),
+                            // FIX: Use the list type here
+                            ParameterSpec.builder("categoryAllowlist", stringListType.copy(true, Collections.emptyList())).defaultValue("null"),
+                            ParameterSpec.builder("categoryDenylist", stringListType.copy(true, Collections.emptyList())).defaultValue("null"),
                             ParameterSpec.builder("runningMode", runningModeCn).defaultValue("%T.DEFAULT_RUNNING_MODE", visionProviderBaseCn)
                     );
                     break;
@@ -252,7 +197,7 @@ public abstract class GenerateVisionProviderTask extends DefaultTask {
                     taskSpecificParamBuilders = List.of(
                             ParameterSpec.builder("outputConfidenceMasks", Boolean.TYPE).defaultValue("%T.DEFAULT_OUTPUT_CONFIDENCE_MASKS", visionProviderBaseCn),
                             ParameterSpec.builder("outputCategoryMask", Boolean.TYPE).defaultValue("%T.DEFAULT_OUTPUT_CATEGORY_MASK", visionProviderBaseCn),
-                            ParameterSpec.builder("displayNamesLocale",new ClassName("java.lang", "String").copy(true, Collections.emptyList())).defaultValue("%T.DEFAULT_DISPLAY_NAMES_LOCALE", visionProviderBaseCn),
+                            ParameterSpec.builder("displayNamesLocale",KOTLIN_STRING_CN).defaultValue("%T.DEFAULT_DISPLAY_NAMES_LOCALE", visionProviderBaseCn),
                             ParameterSpec.builder("runningMode", runningModeCn).defaultValue("%T.DEFAULT_RUNNING_MODE", visionProviderBaseCn)
                     );
                     break;
@@ -303,11 +248,10 @@ public abstract class GenerateVisionProviderTask extends DefaultTask {
         }
         String resultPackage = "com.google.mediapipe.tasks.vision" + "." + resultTaskName.toLowerCase();
         ClassName resultCn = new ClassName(resultPackage, resultTaskName + "Result");
-        return ParameterizedTypeName.get(resultListenerBaseCn, resultCn);
+        // FIX: Add the second generic type argument (MPImage) for the listener.
+        ClassName mpImageCn = new ClassName("com.google.mediapipe.framework.image", "MPImage");
+        return ParameterizedTypeName.get(resultListenerBaseCn, resultCn, mpImageCn);
     }
-
-
-
 
     private void generateCreators(
             TypeSpec.Builder classBuilder,
@@ -347,7 +291,8 @@ public abstract class GenerateVisionProviderTask extends DefaultTask {
                             .addParameter(
                                     ParameterSpec.builder("model", modelEnumCn)
                                             .addAnnotation(nonNullCn)
-                                            .defaultValue("%T.%L", modelEnumCn, defaultModel)
+                                            // FIX: Convert model string to uppercase to match enum constant name
+                                            .defaultValue("%T.%L", modelEnumCn, defaultModel.toUpperCase())
                                             .build()
                             )
                             .addParameter(
@@ -359,6 +304,59 @@ public abstract class GenerateVisionProviderTask extends DefaultTask {
                             .addStatement("return create" + taskName + "Impl(model, %T(" + settingsParams + "))", internalSettingsCn)
                             .build()
             );
+        }
+    }
+    private static final ClassName KOTLIN_STRING_CN = new ClassName("kotlin", "String");
+
+    private void generateModels(
+            TypeSpec.Builder classBuilder,
+            Iterable<VisionTask> tasks,
+            ClassName visionModelCn,
+            ClassName quantizationCn) {
+        for (VisionTask task : tasks) {
+            TypeSpec.Builder modelEnumBuilder =
+                    TypeSpec.enumBuilder(task.getName() + "Model")
+                            .addModifiers(KModifier.PUBLIC)
+                            .addSuperinterface(visionModelCn, CodeBlock.of(""))
+                            .primaryConstructor(
+                                    FunSpec.constructorBuilder()
+                                            .addParameter("enumName", KOTLIN_STRING_CN)
+                                            .addParameter("modelName", KOTLIN_STRING_CN)
+                                            .addParameter("version", KOTLIN_STRING_CN)
+                                            .addParameter("quantization", quantizationCn)
+                                            .build());
+
+            // Add properties to hold the constructor values. These are not overrides themselves.
+            modelEnumBuilder.addProperty(
+                    PropertySpec.builder("enumName", KOTLIN_STRING_CN, KModifier.OVERRIDE).initializer("enumName").build());
+            modelEnumBuilder.addProperty(
+                    PropertySpec.builder("modelName", KOTLIN_STRING_CN, KModifier.OVERRIDE).initializer("modelName").build());
+            modelEnumBuilder.addProperty(
+                    PropertySpec.builder("version", KOTLIN_STRING_CN, KModifier.OVERRIDE).initializer("version").build());
+            modelEnumBuilder.addProperty(
+                    PropertySpec.builder("quantization", quantizationCn, KModifier.OVERRIDE).initializer("quantization").build());
+
+            task.getModels()
+                    .get()
+                    .forEach(
+                            modelName -> {
+                                VisionModel model = VisionModel.fromCanonicalName(modelName);
+                                String enumConstantName = model.getEnumName();
+
+                                // For each enum constant, create an anonymous class that overrides the interface methods.
+                                TypeSpec.Builder anonymousClassBuilder =
+                                        TypeSpec.anonymousClassBuilder()
+                                                // Pass arguments to the enum's primary constructor
+                                                .addSuperclassConstructorParameter("%S", enumConstantName)
+                                                .addSuperclassConstructorParameter("%S", model.getModelName())
+                                                .addSuperclassConstructorParameter("%S", model.getVersion())
+                                                .addSuperclassConstructorParameter(
+                                                        "%T.%L", quantizationCn, model.getQuantization());
+
+
+                                modelEnumBuilder.addEnumConstant(enumConstantName, anonymousClassBuilder.build());
+                            });
+            classBuilder.addType(modelEnumBuilder.build());
         }
     }
 }
