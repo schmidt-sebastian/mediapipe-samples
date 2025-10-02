@@ -1,4 +1,4 @@
-package com.mediapipe.tasks.vision;
+package com.google.mediapipe.tasks.vision.provider;
 
 import android.content.Context;
 import android.webkit.DownloadListener;

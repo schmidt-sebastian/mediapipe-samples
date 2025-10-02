@@ -1,4 +1,4 @@
-package com.google.mediapipe.tasks.vision.provider;
+package com.google.mediapipe.tasks.core;
 
 public enum Quantization {
   FLOAT_16("fp16"),

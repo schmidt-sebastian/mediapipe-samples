@@ -1,5 +1,4 @@
 import com.google.mediapipe.tasks.vision.provider.GenerateVisionProviderTask
-import com.google.mediapipe.tasks.vision.provider.VisionModel
 
 plugins {
     id("com.android.application")
@@ -9,7 +8,7 @@ plugins {
 }
 
 tasks.named<GenerateVisionProviderTask>("generateVisionProvider") {
-    outputDir.set(layout.buildDirectory.dir("generated/source/main/java"))
+    outputDir.set(layout.buildDirectory.dir("generated/source/main/kotlin"))
 
     tasksConfiguration.apply {
         register("FaceDetector") {
@@ -18,22 +17,30 @@ tasks.named<GenerateVisionProviderTask>("generateVisionProvider") {
                 "blaze_face_short_range_v1_fp32"
             ))
         }
-//
-//        register("FaceLandmarker") {
-//            defaultModel.set("face_landmarker_v1_fp32")
-//            models.set(listOf(
-//                "face_landmarker_v1_fp32",
-//                "face_landmarker_with_blendshapes_v2_fp32"
-//            ))
-//        }
-//
-//        register("ImageClassifier") {
-//            defaultModel.set("efficientnet_lite0_v0_fp32")
-//            models.set(listOf(
-//                "efficientnet_lite0_v0_fp32",
-//                "efficientnet_lite2_v2_fp32"
-//            ))
-//        }
+
+        register("InteractiveSegmenter") {
+            defaultModel.set("magic_eye_v1_fp32")
+            models.set(listOf(
+                "magic_eye_v1_fp32"
+            ))
+        }
+
+
+        register("FaceLandmarker") {
+            defaultModel.set("face_landmarker_v1_fp32")
+            models.set(listOf(
+                "face_landmarker_v1_fp32",
+                "face_landmarker_with_blendshapes_v2_fp32"
+            ))
+        }
+
+        register("ImageClassifier") {
+            defaultModel.set("efficientnet_lite0_v0_fp32")
+            models.set(listOf(
+                "efficientnet_lite0_v0_fp32",
+                "efficientnet_lite2_v2_fp32"
+            ))
+        }
     }
 }
 
@@ -71,6 +78,8 @@ android {
     sourceSets {
         getByName("main") {
             java.srcDir("build/generated/source/buildInfo/kotlin")
+            // Add the generated Kotlin source directory here
+            kotlin.srcDir(layout.buildDirectory.dir("generated/source/main/kotlin"))
         }
     }
 }

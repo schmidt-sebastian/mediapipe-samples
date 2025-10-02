@@ -11,7 +11,7 @@ repositories {
 
 dependencies {
     implementation("com.android.tools.build:gradle:8.12.3")
-    implementation("com.palantir.javapoet:javapoet:0.7.0")
+    implementation("com.squareup:kotlinpoet:2.2.0")
 }
 
 // Add this block to register the plugin
