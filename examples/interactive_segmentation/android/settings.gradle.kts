@@ -23,4 +23,4 @@ dependencyResolutionManagement {
 rootProject.name = "Interactive Segmentation"
 include(":app")
 
-include(":app:shared")
+include(":shared")

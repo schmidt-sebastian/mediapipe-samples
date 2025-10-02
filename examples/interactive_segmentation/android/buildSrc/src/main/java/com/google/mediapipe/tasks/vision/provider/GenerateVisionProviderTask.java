@@ -27,7 +27,7 @@ import kotlin.jvm.JvmOverloads;
 import kotlin.jvm.JvmStatic;
 
 public abstract class GenerateVisionProviderTask extends DefaultTask {
-    private static final String PACKAGE_NAME = "com.mediapipe.tasks.vision.provider";
+    private static final String PACKAGE_NAME = "com.google.mediapipe.tasks.vision.provider";
     private final NamedDomainObjectContainer<VisionTask> tasksConfiguration;
 
     @OutputDirectory
@@ -52,7 +52,7 @@ public abstract class GenerateVisionProviderTask extends DefaultTask {
         ClassName futureCn = new ClassName("java.util.concurrent", "Future");
         ClassName visionModelCn = new ClassName(PACKAGE_NAME, "VisionModel");
         ClassName visionProviderBaseCn = new ClassName(PACKAGE_NAME, "VisionProviderBase");
-        ClassName quantizationCn = new ClassName("com.mediapipe.tasks.core", "Quantization");
+        ClassName quantizationCn = new ClassName("com.google.mediapipe.tasks.core", "Quantization");
         ClassName runningModeCn = new ClassName("com.google.mediapipe.tasks.vision.core", "RunningMode");
         ClassName classifierOptionsCn = new ClassName("com.google.mediapipe.tasks.components.processors", "ClassifierOptions");
         ClassName nonNullCn = new ClassName("androidx.annotation", "NonNull");
@@ -97,35 +97,54 @@ public abstract class GenerateVisionProviderTask extends DefaultTask {
             TypeSpec.Builder classBuilder,
             Iterable<VisionTask> tasks,
             ClassName visionModelCn,
-            ClassName quantizationCn
-    ) {
+            ClassName quantizationCn) {
         for (VisionTask task : tasks) {
-            TypeSpec.Builder modelEnumBuilder = TypeSpec.enumBuilder(task.getName() + "Model")
-                    .addModifiers(KModifier.PUBLIC)
-                    .addSuperinterface(visionModelCn, CodeBlock.of(""))
-                    .primaryConstructor(
-                            FunSpec.constructorBuilder()
-                                    .addParameter("modelName", String.class)
-                                    .addParameter("version", String.class)
-                                    .addParameter("quantization", quantizationCn)
-                                    .build()
-                    );
+            TypeSpec.Builder modelEnumBuilder =
+                    TypeSpec.enumBuilder(task.getName() + "Model")
+                            .addModifiers(KModifier.PUBLIC)
+                            .addSuperinterface(visionModelCn, CodeBlock.of(""))
+                            .primaryConstructor(
+                                    FunSpec.constructorBuilder()
+                                            .addParameter("modelName", String.class)
+                                            .addParameter("version", String.class)
+                                            .addParameter("quantization", quantizationCn)
+                                            .build());
 
-            modelEnumBuilder.addProperty(PropertySpec.builder("modelName", String.class, KModifier.OVERRIDE).initializer("modelName").build());
-            modelEnumBuilder.addProperty(PropertySpec.builder("version", String.class, KModifier.OVERRIDE).initializer("version").build());
-            modelEnumBuilder.addProperty(PropertySpec.builder("quantization", quantizationCn, KModifier.OVERRIDE).initializer("quantization").build());
+            // These properties implement getModelName(), getVersion(), and getQuantization()
+            modelEnumBuilder.addProperty(
+                    PropertySpec.builder("modelName", String.class, KModifier.OVERRIDE)
+                            .initializer("modelName")
+                            .build());
+            modelEnumBuilder.addProperty(
+                    PropertySpec.builder("version", String.class, KModifier.OVERRIDE)
+                            .initializer("version")
+                            .build());
+            modelEnumBuilder.addProperty(
+                    PropertySpec.builder("quantization", quantizationCn, KModifier.OVERRIDE)
+                            .initializer("quantization")
+                            .build());
 
-            task.getModels().get().forEach(modelName -> {
-                VisionModel model = VisionModel.fromCanonicalName(modelName);
-                modelEnumBuilder.addEnumConstant(
-                        model.getEnumName(),
-                        TypeSpec.anonymousClassBuilder()
-                                .addSuperclassConstructorParameter("%S", model.getModelName())
-                                .addSuperclassConstructorParameter("%S", model.getVersion())
-                                .addSuperclassConstructorParameter("%T.%L", quantizationCn, model.getQuantization())
-                                .build()
-                );
-            });
+            modelEnumBuilder.addFunction(
+                    FunSpec.builder("getEnumName")
+                            .addModifiers(KModifier.OVERRIDE)
+                            .returns(String.class)
+                            .addStatement("return name")
+                            .build());
+
+            task.getModels()
+                    .get()
+                    .forEach(
+                            modelName -> {
+                                VisionModel model = VisionModel.fromCanonicalName(modelName);
+                                modelEnumBuilder.addEnumConstant(
+                                        model.getEnumName(),
+                                        TypeSpec.anonymousClassBuilder()
+                                                .addSuperclassConstructorParameter("%S", model.getModelName())
+                                                .addSuperclassConstructorParameter("%S", model.getVersion())
+                                                .addSuperclassConstructorParameter(
+                                                        "%T.%L", quantizationCn, model.getQuantization())
+                                                .build());
+                            });
             classBuilder.addType(modelEnumBuilder.build());
         }
     }
@@ -141,7 +160,7 @@ public abstract class GenerateVisionProviderTask extends DefaultTask {
 
         // Define common listener and type ClassNames
         ClassName errorListenerCn = new ClassName("com.google.mediapipe.tasks.core", "ErrorListener");
-        ClassName resultListenerBaseCn = new ClassName(PACKAGE_NAME + ".core", "ResultListener");
+        ClassName resultListenerBaseCn = new ClassName("com.google.mediapipe.tasks.core", "OutputHandler", "ResultListener");
 
         for (VisionTask task : tasks) {
             String taskName = task.getName();
@@ -245,11 +264,7 @@ public abstract class GenerateVisionProviderTask extends DefaultTask {
             List<ParameterSpec.Builder> paramBuilders = new ArrayList<>(taskSpecificParamBuilders);
 
             // Dynamically create the ResultListener type for the current task
-            String resultPackage = PACKAGE_NAME + "." + taskName.toLowerCase();
-            ClassName resultCn = new ClassName(resultPackage, taskName + "Result");
-            ParameterizedTypeName resultListenerCn = ParameterizedTypeName.get(resultListenerBaseCn, resultCn);
-
-            // Add the common listener parameters, making them nullable with a default of null
+            ParameterizedTypeName resultListenerCn = createResultListenerTypeName(taskName, resultListenerBaseCn);
             paramBuilders.add(ParameterSpec.builder("resultListener", resultListenerCn.copy(true, Collections.emptyList())).defaultValue("null"));
             paramBuilders.add(ParameterSpec.builder("errorListener", errorListenerCn.copy(true, Collections.emptyList())).defaultValue("null"));
 
@@ -279,6 +294,20 @@ public abstract class GenerateVisionProviderTask extends DefaultTask {
             classBuilder.addType(dataClassBuilder.build());
         }
     }
+
+    private ParameterizedTypeName createResultListenerTypeName(String taskName, ClassName resultListenerBaseCn) {
+        String resultTaskName = taskName;
+        if (taskName.equals("InteractiveSegmenter")) {
+            // InteractiveSegmenter uses ImageSegmenterResult
+            resultTaskName = "ImageSegmenter";
+        }
+        String resultPackage = "com.google.mediapipe.tasks.vision" + "." + resultTaskName.toLowerCase();
+        ClassName resultCn = new ClassName(resultPackage, resultTaskName + "Result");
+        return ParameterizedTypeName.get(resultListenerBaseCn, resultCn);
+    }
+
+
+
 
     private void generateCreators(
             TypeSpec.Builder classBuilder,
