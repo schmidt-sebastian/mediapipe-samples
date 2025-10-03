@@ -133,7 +133,7 @@ public abstract class GenerateVisionProviderTask extends DefaultTask {
         ClassName resultListenerBaseCn = new ClassName("com.google.mediapipe.tasks.core", "OutputHandler", "ResultListener");
 
         for (VisionTask task : tasks) {
-            String taskName = task.getName();
+            String taskName = task.name;
             if (taskName.equals("FaceStylizer")) continue;
 
             ClassName settingsClassName = new ClassName(PACKAGE_NAME + ".VisionProvider", taskName + "Settings");
@@ -285,7 +285,7 @@ public abstract class GenerateVisionProviderTask extends DefaultTask {
             ClassName nonNullCn
     ) {
         for (VisionTask task : tasks) {
-            String taskName = task.getName();
+            String taskName = task.name;
             if (taskName.equals("FaceStylizer")) continue;
 
             ClassName modelEnumCn = new ClassName(PACKAGE_NAME + ".VisionProvider", taskName + "Model");
@@ -349,7 +349,7 @@ public abstract class GenerateVisionProviderTask extends DefaultTask {
             ClassName quantizationCn) {
         for (VisionTask task : tasks) {
             TypeSpec.Builder modelEnumBuilder =
-                    TypeSpec.enumBuilder(task.getName() + "Model")
+                    TypeSpec.enumBuilder(task.name + "Model")
                             .addModifiers(KModifier.PUBLIC)
                             .addSuperinterface(visionModelCn, CodeBlock.of(""))
                             .primaryConstructor(
@@ -374,18 +374,18 @@ public abstract class GenerateVisionProviderTask extends DefaultTask {
                     .get()
                     .forEach(
                             modelName -> {
-                                VisionModel model = VisionModel.fromCanonicalName(modelName);
-                                String enumConstantName = model.getEnumName();
+                                VisionModel model = VisionModel.fromCanonicalName(task.name, modelName);
+                                String enumConstantName = model.enumName();
 
                                 // For each enum constant, create an anonymous class that overrides the interface methods.
                                 TypeSpec.Builder anonymousClassBuilder =
                                         TypeSpec.anonymousClassBuilder()
                                                 // Pass arguments to the enum's primary constructor
                                                 .addSuperclassConstructorParameter("%S", enumConstantName)
-                                                .addSuperclassConstructorParameter("%S", model.getModelName())
-                                                .addSuperclassConstructorParameter("%S", model.getVersion())
+                                                .addSuperclassConstructorParameter("%S", model.modelName())
+                                                .addSuperclassConstructorParameter("%S", model.version())
                                                 .addSuperclassConstructorParameter(
-                                                        "%T.%L", quantizationCn, model.getQuantization());
+                                                        "%T.%L", quantizationCn, model.quantization());
 
 
                                 modelEnumBuilder.addEnumConstant(enumConstantName, anonymousClassBuilder.build());
@@ -401,6 +401,7 @@ public abstract class GenerateVisionProviderTask extends DefaultTask {
 
         for (VisionTask task : getTasksConfiguration()) {
             for (String modelName : task.getModels().get()) {
+                VisionModel visionModel = VisionModel.fromCanonicalName(task.name, modelName);
                 String moduleDirName = "aipack-" + modelName.toLowerCase().replace("_", "-");
                 File moduleDir = new File(modulesDir, moduleDirName);
 
@@ -410,14 +411,16 @@ public abstract class GenerateVisionProviderTask extends DefaultTask {
 
                 // 2. Download the model file directly into the assets folder
                 String modelFileName = modelName + ".tflite";
-                URL modelUrl = new URL(MEDIAPIPE_GCS_URL_BASE + modelFileName);
+                URL modelUrl = new URL(visionModel.createModelUrl());
                 Path destinationPath = new File(assetsDir, modelFileName).toPath();
-                System.out.println("Downloading " + modelUrl + " to " + destinationPath);
-                try (InputStream in = modelUrl.openStream()) {
-                    Files.copy(in, destinationPath, StandardCopyOption.REPLACE_EXISTING);
-                } catch (IOException e) {
-                    System.err.println("Failed to download model: " + modelName);
-                    throw e;
+                if (!Files.exists(destinationPath)) {
+                    System.out.println("Downloading " + modelUrl + " to " + destinationPath);
+                    try (InputStream in = modelUrl.openStream()) {
+                        Files.copy(in, destinationPath, StandardCopyOption.REPLACE_EXISTING);
+                    } catch (IOException e) {
+                        System.err.println("Failed to download model: " + modelName);
+                        throw e;
+                    }
                 }
 
                 // 3. Generate the build.gradle.kts for the AI Pack
