@@ -1,8 +1,10 @@
+// 1. pluginManagement MUST be the first block.
 pluginManagement {
     repositories {
         google()
         mavenCentral()
         gradlePluginPortal()
+        mavenLocal()
     }
     plugins {
         id("com.android.application") version "8.12.3" apply false
@@ -12,6 +14,21 @@ pluginManagement {
     }
 }
 
+// 2. The buildscript block comes AFTER pluginManagement.
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+        mavenLocal()
+    }
+    dependencies {
+        classpath("com.google.mediapipe.tasks.vision.provider:com.google.mediapipe.tasks.vision.provider.gradle.plugin:1.0.5")
+    }
+}
+
+// 3. Now apply the plugin.
+apply(plugin = "com.google.mediapipe.tasks.vision.provider.ModuleGeneratorPlugin")
+
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
@@ -20,7 +37,7 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
+
 rootProject.name = "Interactive Segmentation"
 include(":app")
-
 include(":shared")

@@ -1,0 +1,31 @@
+{
+    "tasks": {
+        "FaceDetector": {
+            "defaultModel": "blaze_face_short_range_v1_fp16",
+            "models": [
+                "blaze_face_short_range_v1_fp16"
+            ]
+        },
+        "InteractiveSegmenter": {
+            "defaultModel": "magic_touch_v1_fp32",
+            "models": [
+                "magic_touch_v1_fp32"
+            ]
+        },
+        "FaceLandmarker": {
+            "defaultModel": "face_landmarker_v1_fp16",
+            "models": [
+                "face_landmarker_v1_fp16"
+            ]
+        },
+        "ImageClassifier": {
+            "defaultModel": "efficientnet_lite0_v1_fp32",
+            "models": [
+                "efficientnet_lite0_v1_fp32",
+                "efficientnet_lite0_v1_int8",
+                "efficientnet_lite2_v1_fp32",
+                "efficientnet_lite2_v1_int8"
+            ]
+        }
+    }
+}

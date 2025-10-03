@@ -1,9 +1,9 @@
 package com.google.mediapipe.tasks.core;
 
 public enum Quantization {
-  FLOAT_16("fp16"),
-  FLOAT_32("fp32"),
-  INT_8("int8");
+  FLOAT16("fp16"),
+  FLOAT32("fp32"),
+  INT8("int8");
 
   private final String description;
 

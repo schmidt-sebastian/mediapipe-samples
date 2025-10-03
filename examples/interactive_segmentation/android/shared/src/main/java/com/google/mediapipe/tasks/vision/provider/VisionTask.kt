@@ -1,9 +1,5 @@
 package com.google.mediapipe.tasks.vision.provider
 
-import org.gradle.api.provider.ListProperty
-import org.gradle.api.provider.Property
-import org.gradle.api.tasks.Input
-import org.gradle.api.tasks.Optional
 import javax.inject.Inject
 
 /**
@@ -15,7 +11,7 @@ abstract class VisionTask @Inject constructor(
      * This must match one of the names in the BaseTask enum, in PascalCase.
      * @return The task name.
      */
-    @JvmField @get:Input val name: String
+    @JvmField val name: String
 ) {
 
     /**
@@ -26,7 +22,6 @@ abstract class VisionTask @Inject constructor(
      * @return The BaseTask enum constant for this task.
      * @throws IllegalArgumentException if the name does not correspond to a valid BaseTask.
      */
-    @get:Input
     val type: Type by lazy {
         // Convert PascalCase name to UPPER_SNAKE_CASE for enum matching
         val enumName = name.replace(Regex("(?<=[a-z])(?=[A-Z])"), "_").uppercase()
@@ -86,12 +81,9 @@ abstract class VisionTask @Inject constructor(
         }
     }
 
-    @get:Input
-    @get:Optional
-    abstract val defaultModel: Property<String>
+
+    abstract val defaultModel: String
 
 
-    @get:Input
-    @get:Optional
-    abstract val models: ListProperty<String>
+    abstract val models: List<String>
 }

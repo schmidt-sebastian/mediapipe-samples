@@ -64,7 +64,7 @@ public class InteractiveSegmentationHelper {
             VisionProvider.InteractiveSegmenterSettings settings = new VisionProvider.InteractiveSegmenterSettings()
                     .withResultListener(this::returnSegmenterResults)
                     .withErrorListener(this::returnSegmenterError);
-            interactiveSegmenter = provider.createInteractiveSegmenter(VisionProvider.InteractiveSegmenterModel.MAGIC_EYE_V1_FP32, settings).get();
+            interactiveSegmenter = provider.createInteractiveSegmenter(VisionProvider.InteractiveSegmenterModel.MAGIC_TOUCH_V1_FP32, settings).get();
         } catch (IllegalStateException | ExecutionException | InterruptedException e) {
             listener.onError(
                 "Interactive segmentation failed to initialize. See error logs for details"

@@ -4,43 +4,6 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("de.undercouch.download")
-    id("com.google.mediapipe.tasks.vision.provider")
-}
-
-tasks.named<GenerateVisionProviderTask>("generateVisionProvider") {
-    outputDir.set(layout.buildDirectory.dir("generated/source/main/kotlin"))
-    aipackModulesDir.set(layout.buildDirectory.dir("generated/aipack-modules"))
-    tasksConfiguration.apply {
-        register("FaceDetector") {
-            defaultModel.set("blaze_face_short_range_v1_fp16")
-            models.set(listOf(
-                "blaze_face_short_range_v1_fp16"
-            ))
-        }
-        register("InteractiveSegmenter") {
-            defaultModel.set("magic_touch_v1_fp32")
-            models.set(listOf(
-                "magic_touch_v1_fp32"
-            ))
-        }
-
-        register("FaceLandmarker") {
-            defaultModel.set("face_landmarker_v1_fp16")
-            models.set(listOf(
-                "face_landmarker_v1_fp16",
-            ))
-        }
-
-        register("ImageClassifier") {
-            defaultModel.set("efficientnet_lite0_v0_fp32")
-            models.set(listOf(
-                "efficientnet_lite0_v1_fp32",
-                "efficientnet_lite0_v1_int8",
-                "efficientnet_lite2_v1_fp32",
-                "efficientnet_lite2_v1_int8"
-            ))
-        }
-    }
 }
 
 android {
@@ -82,6 +45,7 @@ android {
         }
     }
 }
+
 
 // Define the asset directory as an extra property
 extra["ASSET_DIR"] = "$projectDir/src/main/assets"
