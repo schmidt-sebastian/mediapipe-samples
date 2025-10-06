@@ -21,4 +21,6 @@ public interface DownloadListener {
      * Called when the model download fails.
      */
     void onFailed(@NonNull VisionModel model, @NonNull Exception e);
+
+    //fun onShowConfirmationDialog(activity: Activity, status: AssetPackState) {
 }

@@ -4,6 +4,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("de.undercouch.download")
+    id("com.google.mediapipe.tasks.vision.provider.VisionProviderPlugin")
 }
 
 android {

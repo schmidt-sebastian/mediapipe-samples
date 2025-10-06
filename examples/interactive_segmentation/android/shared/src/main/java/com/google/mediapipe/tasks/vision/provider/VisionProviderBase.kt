@@ -1,8 +1,18 @@
 package com.google.mediapipe.tasks.vision.provider
 
+import android.app.Activity
 import android.content.Context
+import android.util.Log
+import com.google.android.play.core.assetpacks.AssetPackManagerFactory
 import android.webkit.DownloadListener
+import com.google.android.play.core.aipacks.AiPackLocation
+import com.google.android.play.core.aipacks.AiPackManager
+import com.google.android.play.core.aipacks.AiPackManagerFactory
+import com.google.android.play.core.assetpacks.AssetPackManager
+import com.google.android.play.core.assetpacks.AssetPackState
+import com.google.firebase.crashlytics.buildtools.reloc.org.apache.commons.io.FilenameUtils
 import com.google.mediapipe.tasks.components.processors.ClassifierOptions
+import com.google.mediapipe.tasks.core.BaseOptions
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.google.mediapipe.tasks.vision.facedetector.FaceDetector
 import com.google.mediapipe.tasks.vision.facelandmarker.FaceLandmarker
@@ -14,9 +24,17 @@ import com.google.mediapipe.tasks.vision.imagesegmenter.ImageSegmenter
 import com.google.mediapipe.tasks.vision.interactivesegmenter.InteractiveSegmenter
 import com.google.mediapipe.tasks.vision.objectdetector.ObjectDetector
 import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarker
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.Executors
 import java.util.concurrent.Future
 
-open class VisionProviderBase(private val context: Context?) {
+open class VisionProviderBase(private val context: Context) {
+    private lateinit var aiPackManager: AiPackManager
+
+    init {
+        aiPackManager = AiPackManagerFactory.getInstance(context.applicationContext)
+    }
+
     public class FaceDetectorSettingsInternal @JvmOverloads constructor(
         private val minDetectionConfidence: Float = DEFAULT_CONFIDENCE,
         private val minSuppressionThreshold: Float = DEFAULT_CONFIDENCE,
@@ -368,12 +386,88 @@ open class VisionProviderBase(private val context: Context?) {
         throw UnsupportedOperationException()
     }
 
+    private fun getAbsoluteAiAssetPath(aiPack: String, relativeAiAssetPath: String): String? {
+        val aiPackPath: AiPackLocation? = aiPackManager.getPackLocation(aiPack)
+
+        if (aiPackPath == null) {
+            // AI pack is not ready
+            return null
+        }
+
+        val aiAssetsFolderPath: String? = aiPackPath.assetsPath()
+        // equivalent to: FilenameUtils.concat(aiPackPath.path(), "assets");
+        val aiAssetPath: String? = FilenameUtils.concat(aiAssetsFolderPath, relativeAiAssetPath)
+        return aiAssetPath
+    }
     fun createInteractiveSegmenterImpl(
         model: VisionModel, settings: InteractiveSegmenterSettingsInternal
     ): Future<InteractiveSegmenter> {
-        throw UnsupportedOperationException()
-    }
+        val future = CompletableFuture<InteractiveSegmenter>()
 
+        val downloader = AIPackDownloader(context)
+        val packName = "ai-pack-" + model.modelName
+        val modelPath = getAbsoluteAiAssetPath(packName, model.createModelFileName())
+
+        downloader.setListener(object : AIPackDownloader.DownloadListener {
+            override fun onStatusUpdate(status: DownloadStatus) {
+                when (status) {
+                    is DownloadStatus.Completed -> {
+                        Log.d("VisionProvider", "AI Pack '${packName}' downloaded successfully.")
+                        // Once the download is complete, the asset pack is available to the app's
+                        // AssetManager. We can now proceed with creating the MediaPipe task.
+                        Executors.newSingleThreadExecutor().submit {
+                            try {
+                                val baseOptionsBuilder = BaseOptions.builder()
+                                    .setModelAssetPath(modelPath)
+// runnign mode?
+
+                                val optionsBuilder =
+                                    InteractiveSegmenter.InteractiveSegmenterOptions.builder()
+                                        .setBaseOptions(baseOptionsBuilder.build())
+                                        .setOutputConfidenceMasks(settings.outputConfidenceMasks())
+                                        .setOutputCategoryMask(settings.outputCategoryMask())
+
+                                val segmenter = InteractiveSegmenter.createFromOptions(context, optionsBuilder.build())
+                                future.complete(segmenter)
+                            } catch (e: Exception) {
+                                future.completeExceptionally(e)
+                            } finally {
+                                downloader.removeListener()
+                            }
+                        }
+                    }
+                    is DownloadStatus.Failed -> {
+                        val errorMessage = "Failed to download AI Pack '${packName}' with error code: ${status.errorCode}"
+                        Log.e("VisionProvider", errorMessage)
+                        future.completeExceptionally(RuntimeException(errorMessage))
+                        downloader.removeListener()
+                    }
+                    is DownloadStatus.Downloading -> {
+                        // You can log progress, but the Future doesn't support progress updates.
+                        Log.i("VisionProvider", "Downloading '${packName}': ${status.progress}%")
+                    }
+                    is DownloadStatus.Idle -> {
+                        // The downloader is idle, waiting for the download to start.
+                    }
+                }
+            }
+
+            override fun onShowConfirmationDialog(activity: Activity, status: AssetPackState) {
+                // This provider class cannot show a UI dialog.
+                // We fail the future and let the calling UI layer handle the user confirmation.
+                val errorMessage = "User confirmation required to download '${packName}'. The UI must handle this."
+                Log.w("VisionProvider", errorMessage)
+                future.completeExceptionally(IllegalStateException(errorMessage))
+                downloader.removeListener()
+            }
+        })
+
+        // Start the download process.
+        Log.d("VisionProvider", "Requesting download for AI Pack: '${packName}'")
+        downloader.downloadPack(packName)
+
+        return future
+    }
     fun createObjectDetectorImpl(
         model: VisionModel, settings: ObjectDetectorSettingsInternal
     ): Future<ObjectDetector> {

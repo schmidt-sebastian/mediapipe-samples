@@ -23,9 +23,21 @@ interface VisionModel {
         val versionNumber = version.removePrefix("v")
 
         // Determines the model file extension.
-        val extension = if (modelBaseName == "face_landmarker") "task" else "tflite"
+        val extension = task.modelExtension
 
         return "https://storage.googleapis.com/mediapipe-models/${task.name.lowercase()}/${modelName}/${quantization.name.lowercase()}/$versionNumber/${modelName}.$extension"
+    }
+
+    fun createModelFileName(): String {
+        val modelBaseName = modelName
+
+        // Extracts the version number (e.g., "v1" -> "1").
+        val versionNumber = version.removePrefix("v")
+
+        // Determines the model file extension.
+        val extension = task.modelExtension
+
+        return "${modelName}.$extension"
     }
 
     companion object {
