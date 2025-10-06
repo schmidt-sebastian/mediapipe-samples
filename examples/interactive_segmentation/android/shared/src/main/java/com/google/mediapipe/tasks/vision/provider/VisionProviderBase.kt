@@ -3,14 +3,13 @@ package com.google.mediapipe.tasks.vision.provider
 import android.app.Activity
 import android.content.Context
 import android.util.Log
-import com.google.android.play.core.assetpacks.AssetPackManagerFactory
 import android.webkit.DownloadListener
 import com.google.android.play.core.aipacks.AiPackLocation
 import com.google.android.play.core.aipacks.AiPackManager
 import com.google.android.play.core.aipacks.AiPackManagerFactory
-import com.google.android.play.core.assetpacks.AssetPackManager
 import com.google.android.play.core.assetpacks.AssetPackState
-import com.google.firebase.crashlytics.buildtools.reloc.org.apache.commons.io.FilenameUtils
+import com.google.android.play.core.splitinstall.SplitInstallManager
+import com.google.android.play.core.splitinstall.SplitInstallManagerFactory
 import com.google.mediapipe.tasks.components.processors.ClassifierOptions
 import com.google.mediapipe.tasks.core.BaseOptions
 import com.google.mediapipe.tasks.vision.core.RunningMode
@@ -33,6 +32,21 @@ open class VisionProviderBase(private val context: Context) {
 
     init {
         aiPackManager = AiPackManagerFactory.getInstance(context.applicationContext)
+
+        val splitInstallManager: SplitInstallManager = SplitInstallManagerFactory.create(context)
+
+// 2. Get the set of all installed module names
+        val installedModules: Set<String> = splitInstallManager.installedModules
+
+// 3. Log the installed modules
+        if (installedModules.isEmpty()) {
+            Log.d("AiPackInfo", "No feature modules are currently installed.")
+        } else {
+            Log.d("AiPackInfo", "Installed modules:")
+            installedModules.forEach { moduleName ->
+                Log.d("AiPackInfo", "- $moduleName")
+            }
+        }
     }
 
     public class FaceDetectorSettingsInternal @JvmOverloads constructor(
@@ -386,17 +400,18 @@ open class VisionProviderBase(private val context: Context) {
         throw UnsupportedOperationException()
     }
 
-    private fun getAbsoluteAiAssetPath(aiPack: String, relativeAiAssetPath: String): String? {
+    private fun getAbsoluteAiAssetPath(aiPack: String, relativeAiAssetPath: String): String {
         val aiPackPath: AiPackLocation? = aiPackManager.getPackLocation(aiPack)
 
         if (aiPackPath == null) {
             // AI pack is not ready
-            return null
+            // should return null
+            throw RuntimeException("AI pack not found " + aiPack)
         }
 
         val aiAssetsFolderPath: String? = aiPackPath.assetsPath()
         // equivalent to: FilenameUtils.concat(aiPackPath.path(), "assets");
-        val aiAssetPath: String? = FilenameUtils.concat(aiAssetsFolderPath, relativeAiAssetPath)
+        val aiAssetPath: String = "$aiAssetsFolderPath/$relativeAiAssetPath"
         return aiAssetPath
     }
     fun createInteractiveSegmenterImpl(
@@ -405,7 +420,7 @@ open class VisionProviderBase(private val context: Context) {
         val future = CompletableFuture<InteractiveSegmenter>()
 
         val downloader = AIPackDownloader(context)
-        val packName = "ai-pack-" + model.modelName
+        val packName = "aipack-" + model.enumName.lowercase().replace("_", "-")
         val modelPath = getAbsoluteAiAssetPath(packName, model.createModelFileName())
 
         downloader.setListener(object : AIPackDownloader.DownloadListener {
