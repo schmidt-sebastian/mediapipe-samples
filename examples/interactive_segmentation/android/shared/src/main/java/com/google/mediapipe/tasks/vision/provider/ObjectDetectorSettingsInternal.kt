@@ -9,6 +9,7 @@ public class ObjectDetectorSettingsInternal @JvmOverloads constructor(
     private val categoryAllowlist: List<String>? = null,
     private val categoryDenylist: List<String>? = null,
     private val runningMode: RunningMode = VisionProviderBase.Companion.DEFAULT_RUNNING_MODE
+
 ) {
     fun displayNamesLocale(): String? {
         return displayNamesLocale
