@@ -10,7 +10,7 @@ public class GestureRecognizerSettingsInternal @JvmOverloads constructor(
     private val numHands: Int = 1,
     private val cannedGesturesClassifierOptions: ClassifierOptions? = null,
     private val customGesturesClassifierOptions: ClassifierOptions? = null,
-    private val runningMode: RunningMode = RunningMode.IMAGE
+    private val runningMode: RunningMode = VisionProviderBase.Companion.DEFAULT_RUNNING_MODE
 ) {
     fun minHandDetectionConfidence(): Float {
         return minHandDetectionConfidence

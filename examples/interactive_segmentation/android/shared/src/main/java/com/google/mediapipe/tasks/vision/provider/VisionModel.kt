@@ -37,7 +37,7 @@ interface VisionModel {
         // Determines the model file extension.
         val extension = task.modelExtension
 
-        return "${modelName}.$extension"
+        return "${modelName}_v${versionNumber}_${quantization.description}.$extension"
     }
 
     companion object {

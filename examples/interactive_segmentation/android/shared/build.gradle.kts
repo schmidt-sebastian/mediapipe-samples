@@ -38,7 +38,7 @@ android {
 dependencies {
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("com.google.android.material:material:1.13.0")
-    implementation("com.google.mediapipe:tasks-vision:0.10.29")
+    implementation("com.google.mediapipe:tasks-vision:0.10.30")
     implementation ("com.google.android.play:asset-delivery:2.3.0")
     implementation ("com.google.android.play:ai-delivery:0.1.1-alpha01")
     implementation("androidx.core:core-ktx:1.17.0")

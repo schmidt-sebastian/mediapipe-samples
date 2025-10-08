@@ -7,9 +7,9 @@ public class FaceLandmarkerSettingsInternal @JvmOverloads constructor(
     private val minFacePresenceConfidence: Float = 0.5f,
     private val minTrackingConfidence: Float = 0.5f,
     private val numFaces: Int = 1,
-    private val outputFaceBlendshapes: Boolean = false,
-    private val outputFacialTransformationMatrixes: Boolean = false,
-    private val runningMode: RunningMode = RunningMode.IMAGE
+    private val outputFaceBlendshapes: Boolean = VisionProviderBase.Companion.DEFAULT_OUTPUT_BLENDSHAPES,
+    private val outputFacialTransformationMatrixes: Boolean = VisionProviderBase.Companion.DEFAULT_OUTPUT_FACIAL_TRANSFORMATION_MATRIXES,
+    private val runningMode: RunningMode = VisionProviderBase.Companion.DEFAULT_RUNNING_MODE
 ) {
     fun minFaceDetectionConfidence(): Float {
         return minFaceDetectionConfidence

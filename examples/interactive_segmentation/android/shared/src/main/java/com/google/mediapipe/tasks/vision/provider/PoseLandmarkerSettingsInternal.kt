@@ -7,8 +7,8 @@ public class PoseLandmarkerSettingsInternal @JvmOverloads constructor(
     private val minPosePresenceConfidence: Float = 0.5f,
     private val minTrackingConfidence: Float = 0.5f,
     private val numPoses: Int = 1,
-    private val outputSegmentationMasks: Boolean = false,
-    private val runningMode: RunningMode = RunningMode.IMAGE
+    private val outputSegmentationMasks: Boolean = VisionProviderBase.Companion.DEFAULT_OUTPUT_SEGMENTATION_MASKS,
+    private val runningMode: RunningMode = VisionProviderBase.Companion.DEFAULT_RUNNING_MODE
 ) {
     fun minPoseDetectionConfidence(): Float {
         return minPoseDetectionConfidence

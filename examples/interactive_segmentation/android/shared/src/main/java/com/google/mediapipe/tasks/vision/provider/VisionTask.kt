@@ -45,16 +45,16 @@ abstract class VisionTask @Inject constructor(
          */
         val modelExtension: String
     ) {
-        FACE_DETECTOR(".task"),
-        FACE_LANDMARKER(".task"),
-        GESTURE_RECOGNIZER(".task"),
-        HAND_LANDMARKER(".task"),
-        IMAGE_CLASSIFIER(".task"),
-        IMAGE_EMBEDDER(".task"),
-        IMAGE_SEGMENTER(".task"),
-        INTERACTIVE_SEGMENTER(".task"),
-        OBJECT_DETECTOR(".task"),
-        POSE_LANDMARKER(".task");
+        FACE_DETECTOR("task"),
+        FACE_LANDMARKER("task"),
+        GESTURE_RECOGNIZER("task"),
+        HAND_LANDMARKER("task"),
+        IMAGE_CLASSIFIER("task"),
+        IMAGE_EMBEDDER("task"),
+        IMAGE_SEGMENTER("task"),
+        INTERACTIVE_SEGMENTER("task"),
+        OBJECT_DETECTOR("task"),
+        POSE_LANDMARKER("task");
 
         companion object {
             /**

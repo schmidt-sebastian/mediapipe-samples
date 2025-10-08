@@ -7,7 +7,7 @@ public class HandLandmarkerSettingsInternal @JvmOverloads constructor(
     private val minHandPresenceConfidence: Float = 0.5f,
     private val minTrackingConfidence: Float = 0.5f,
     private val numHands: Int = 1,
-    private val runningMode: RunningMode = RunningMode.IMAGE
+    private val runningMode: RunningMode = VisionProviderBase.Companion.DEFAULT_RUNNING_MODE
 ) {
     fun minHandDetectionConfidence(): Float {
         return minHandDetectionConfidence

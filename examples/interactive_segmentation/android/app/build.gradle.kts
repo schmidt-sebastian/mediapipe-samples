@@ -62,7 +62,7 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
 
     // MediaPipe Library
-    implementation("com.google.mediapipe:tasks-vision:0.10.29")
+    implementation("com.google.mediapipe:tasks-vision:0.10.30")
     implementation("com.google.android.play:feature-delivery:2.1.0")
 
     testImplementation("junit:junit:4.13.2")
