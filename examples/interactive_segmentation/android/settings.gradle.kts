@@ -14,7 +14,6 @@ pluginManagement {
     }
 }
 
-// 2. The buildscript block comes AFTER pluginManagement.
 buildscript {
     repositories {
         google()
@@ -22,7 +21,7 @@ buildscript {
         mavenLocal()
     }
     dependencies {
-        classpath("com.google.mediapipe.tasks.vision.provider:com.google.mediapipe.tasks.vision.provider.gradle.plugin:1.0.17")
+        classpath("com.google.mediapipe.tasks.vision.provider:com.google.mediapipe.tasks.vision.provider.gradle.plugin:1.0.21")
     }
 }
 

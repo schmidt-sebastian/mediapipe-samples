@@ -10,7 +10,6 @@ import com.google.android.play.core.aipacks.AiPackManagerFactory
 import com.google.android.play.core.assetpacks.AssetPackState
 import com.google.android.play.core.splitinstall.SplitInstallManager
 import com.google.android.play.core.splitinstall.SplitInstallManagerFactory
-import com.google.mediapipe.tasks.components.processors.ClassifierOptions
 import com.google.mediapipe.tasks.core.BaseOptions
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.google.mediapipe.tasks.vision.facedetector.FaceDetector
@@ -26,19 +25,21 @@ import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarker
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
+import com.google.android.play.core.splitinstall.SplitInstallRequest
+import com.google.android.play.core.splitinstall.SplitInstallStateUpdatedListener
+import com.google.android.play.core.splitinstall.model.SplitInstallSessionStatus
+import android.os.Build.SOC_MODEL
+import com.google.mediapipe.tasks.core.Delegate
+
 
 open class VisionProviderBase(private val context: Context) {
-    private lateinit var aiPackManager: AiPackManager
+    private var aiPackManager: AiPackManager = AiPackManagerFactory.getInstance(context.applicationContext)
+    private var soc: String
 
     init {
-        aiPackManager = AiPackManagerFactory.getInstance(context.applicationContext)
 
         val splitInstallManager: SplitInstallManager = SplitInstallManagerFactory.create(context)
-
-// 2. Get the set of all installed module names
         val installedModules: Set<String> = splitInstallManager.installedModules
-
-// 3. Log the installed modules
         if (installedModules.isEmpty()) {
             Log.d("AiPackInfo", "No feature modules are currently installed.")
         } else {
@@ -47,288 +48,97 @@ open class VisionProviderBase(private val context: Context) {
                 Log.d("AiPackInfo", "- $moduleName")
             }
         }
+
+        soc   = getHexagonVersionForSoC(SOC_MODEL)
     }
 
-    public class FaceDetectorSettingsInternal @JvmOverloads constructor(
-        private val minDetectionConfidence: Float = DEFAULT_CONFIDENCE,
-        private val minSuppressionThreshold: Float = DEFAULT_CONFIDENCE,
-        private val runningMode: RunningMode = DEFAULT_RUNNING_MODE
+    /**
+     * Downloads a Play Feature Delivery module if it's not already installed.
+     *
+     * @param moduleName The name of the feature module to download.
+     * @return A CompletableFuture that completes when the module is installed or fails.
+     */
+    private fun downloadNpuModuleIfNeeded(moduleName: String): CompletableFuture<Void?> {
+        val future = CompletableFuture<Void?>()
+        val splitInstallManager: SplitInstallManager = SplitInstallManagerFactory.create(context)
+
+        if (splitInstallManager.installedModules.contains(moduleName)) {
+            Log.d("VisionProvider", "NPU module '$moduleName' is already installed.")
+            future.complete(null)
+            return future
+        }
+
+        Log.d("VisionProvider", "Requesting download for NPU module: '$moduleName'")
+        val request = SplitInstallRequest.newBuilder().addModule(moduleName).build()
+
+        val listener = SplitInstallStateUpdatedListener { state ->
+            when (state.status()) {
+                SplitInstallSessionStatus.INSTALLED -> {
+                    Log.d("VisionProvider", "NPU module '$moduleName' installed successfully.")
+                    future.complete(null)
+                }
+                SplitInstallSessionStatus.FAILED -> {
+                    val errorMessage = "Failed to download NPU module '$moduleName' with error code: ${state.errorCode()}"
+                    Log.e("VisionProvider", errorMessage)
+                    future.completeExceptionally(RuntimeException(errorMessage))
+                }
+                SplitInstallSessionStatus.DOWNLOADING -> {
+                    val progress = (state.bytesDownloaded() * 100 / state.totalBytesToDownload()).toInt()
+                    Log.i("VisionProvider", "Downloading '$moduleName': $progress%")
+                }
+                else -> {
+                    // Log other states for debugging if necessary
+                    Log.d("VisionProvider", "NPU module download status: ${state.status()}")
+                }
+            }
+        }
+
+        splitInstallManager.registerListener(listener)
+        splitInstallManager.startInstall(request).addOnFailureListener { e ->
+            future.completeExceptionally(e)
+        }
+
+        // Clean up the listener once the operation is complete
+        future.whenComplete { _, _ -> splitInstallManager.unregisterListener(listener) }
+
+        return future
+    }
+
+    fun getHexagonVersionForSoC(socIdentifier: String): String {
+        return when {
+            // Snapdragon 8 Gen 3
+            socIdentifier.contains("SM8650", ignoreCase = true) -> "v75"
+
+            // Snapdragon 8 Gen 2
+            socIdentifier.contains("SM8550", ignoreCase = true) -> "v73"
+
+            // Snapdragon 8 Gen 1 / 8+ Gen 1
+            socIdentifier.contains("SM8450", ignoreCase = true) ||
+                    socIdentifier.contains("SM8475", ignoreCase = true) -> "v69"
+
+            // Snapdragon 7 series
+            socIdentifier.contains("SM7325", ignoreCase = true) -> "v69" // Snapdragon 778G
+            socIdentifier.contains("SM7450", ignoreCase = true) -> "v69" // Snapdragon 7 Gen 1
+
+            // Snapdragon 888 / 888+
+            socIdentifier.contains("SM8350", ignoreCase = true) -> "v68"
+
+            // Add other mappings here as needed...
+
+            else -> return ""// Return null if the SoC is not in our list
+        }
+    }
+
+    /**
+     * Adds a listener for model download events.
+     *
+     * @param listener The listener to add.
+     */
+    fun addModelDownloadListener(
+        model: VisionModel, listener: DownloadListener
     ) {
-        fun minDetectionConfidence(): Float {
-            return minDetectionConfidence
-        }
-
-        fun minSuppressionThreshold(): Float {
-            return minSuppressionThreshold
-        }
-
-        fun runningMode(): RunningMode {
-            return runningMode
-        }
+        throw UnsupportedOperationException()
     }
-
-    public class FaceLandmarkerSettingsInternal @JvmOverloads constructor(
-        private val minFaceDetectionConfidence: Float = DEFAULT_CONFIDENCE,
-        private val minFacePresenceConfidence: Float = DEFAULT_CONFIDENCE,
-        private val minTrackingConfidence: Float = DEFAULT_CONFIDENCE,
-        private val numFaces: Int = DEFAULT_NUM_RESULTS,
-        private val outputFaceBlendshapes: Boolean = DEFAULT_OUTPUT_BLENDSHAPES,
-        private val outputFacialTransformationMatrixes: Boolean = DEFAULT_OUTPUT_FACIAL_TRANSFORMATION_MATRIXES,
-        private val runningMode: RunningMode = DEFAULT_RUNNING_MODE
-    ) {
-        fun minFaceDetectionConfidence(): Float {
-            return minFaceDetectionConfidence
-        }
-
-        fun minFacePresenceConfidence(): Float {
-            return minFacePresenceConfidence
-        }
-
-        fun minTrackingConfidence(): Float {
-            return minTrackingConfidence
-        }
-
-        fun numFaces(): Int {
-            return numFaces
-        }
-
-        fun outputFaceBlendshapes(): Boolean {
-            return outputFaceBlendshapes
-        }
-
-        fun outputFacialTransformationMatrixes(): Boolean {
-            return outputFacialTransformationMatrixes
-        }
-
-        fun runningMode(): RunningMode {
-            return runningMode
-        }
-    }
-
-    public class GestureRecognizerSettingsInternal @JvmOverloads constructor(
-        private val minHandDetectionConfidence: Float = DEFAULT_CONFIDENCE,
-        private val minHandPresenceConfidence: Float = DEFAULT_CONFIDENCE,
-        private val minTrackingConfidence: Float = DEFAULT_CONFIDENCE,
-        private val numHands: Int = DEFAULT_NUM_RESULTS,
-        private val cannedGesturesClassifierOptions: ClassifierOptions? = null,
-        private val customGesturesClassifierOptions: ClassifierOptions? = null,
-        private val runningMode: RunningMode = DEFAULT_RUNNING_MODE
-    ) {
-        fun minHandDetectionConfidence(): Float {
-            return minHandDetectionConfidence
-        }
-
-        fun minHandPresenceConfidence(): Float {
-            return minHandPresenceConfidence
-        }
-
-        fun minTrackingConfidence(): Float {
-            return minTrackingConfidence
-        }
-
-        fun numHands(): Int {
-            return numHands
-        }
-
-        fun cannedGesturesClassifierOptions(): ClassifierOptions? {
-            return cannedGesturesClassifierOptions
-        }
-
-        fun customGesturesClassifierOptions(): ClassifierOptions? {
-            return customGesturesClassifierOptions
-        }
-
-        fun runningMode(): RunningMode {
-            return runningMode
-        }
-    }
-
-    public class HandLandmarkerSettingsInternal @JvmOverloads constructor(
-        private val minHandDetectionConfidence: Float = DEFAULT_CONFIDENCE,
-        private val minHandPresenceConfidence: Float = DEFAULT_CONFIDENCE,
-        private val minTrackingConfidence: Float = DEFAULT_CONFIDENCE,
-        private val numHands: Int = DEFAULT_NUM_RESULTS,
-        private val runningMode: RunningMode = DEFAULT_RUNNING_MODE
-    ) {
-        fun minHandDetectionConfidence(): Float {
-            return minHandDetectionConfidence
-        }
-
-        fun minHandPresenceConfidence(): Float {
-            return minHandPresenceConfidence
-        }
-
-        fun minTrackingConfidence(): Float {
-            return minTrackingConfidence
-        }
-
-        fun numHands(): Int {
-            return numHands
-        }
-
-        fun runningMode(): RunningMode {
-            return runningMode
-        }
-    }
-
-    public class ImageClassifierSettingsInternal @JvmOverloads constructor(
-        private val displayNamesLocale: String? = DEFAULT_DISPLAY_NAMES_LOCALE,
-        private val maxResults: Int = UNLIMITED_RESULTS,
-        private val scoreThreshold: Float = 0.0f,
-        private val categoryAllowlist: List<String>? = null,
-        private val categoryDenylist: List<String>? = null,
-        private val runningMode: RunningMode = DEFAULT_RUNNING_MODE
-    ) {
-        fun displayNamesLocale(): String? {
-            return displayNamesLocale
-        }
-
-        fun maxResults(): Int {
-            return maxResults
-        }
-
-        fun scoreThreshold(): Float {
-            return scoreThreshold
-        }
-
-        fun categoryAllowlist(): List<String>? {
-            return categoryAllowlist
-        }
-
-        fun categoryDenylist(): List<String>? {
-            return categoryDenylist
-        }
-
-        fun runningMode(): RunningMode {
-            return runningMode
-        }
-    }
-
-    public class ImageEmbedderSettingsInternal @JvmOverloads constructor(
-        private val l2Normalize: Boolean = DEFAULT_L2_NORMALIZE,
-        private val quantize: Boolean = DEFAULT_QUANTIZE,
-        private val runningMode: RunningMode = DEFAULT_RUNNING_MODE
-    ) {
-        fun l2Normalize(): Boolean {
-            return l2Normalize
-        }
-
-        fun quantize(): Boolean {
-            return quantize
-        }
-
-        fun runningMode(): RunningMode {
-            return runningMode
-        }
-    }
-
-    public class ObjectDetectorSettingsInternal @JvmOverloads constructor(
-        private val displayNamesLocale: String? = DEFAULT_DISPLAY_NAMES_LOCALE,
-        private val maxResults: Int = UNLIMITED_RESULTS,
-        private val scoreThreshold: Float = DEFAULT_CONFIDENCE,
-        private val categoryAllowlist: List<String>? = null,
-        private val categoryDenylist: List<String>? = null,
-        private val runningMode: RunningMode = DEFAULT_RUNNING_MODE
-    ) {
-        fun displayNamesLocale(): String? {
-            return displayNamesLocale
-        }
-
-        fun maxResults(): Int {
-            return maxResults
-        }
-
-        fun scoreThreshold(): Float {
-            return scoreThreshold
-        }
-
-        fun categoryAllowlist(): List<String>? {
-            return categoryAllowlist
-        }
-
-        fun categoryDenylist(): List<String>? {
-            return categoryDenylist
-        }
-
-        fun runningMode(): RunningMode {
-            return runningMode
-        }
-    }
-
-    public class PoseLandmarkerSettingsInternal @JvmOverloads constructor(
-        private val minPoseDetectionConfidence: Float = DEFAULT_CONFIDENCE,
-        private val minPosePresenceConfidence: Float = DEFAULT_CONFIDENCE,
-        private val minTrackingConfidence: Float = DEFAULT_CONFIDENCE,
-        private val numPoses: Int = DEFAULT_NUM_RESULTS,
-        private val outputSegmentationMasks: Boolean = DEFAULT_OUTPUT_SEGMENTATION_MASKS,
-        private val runningMode: RunningMode = DEFAULT_RUNNING_MODE
-    ) {
-        fun minPoseDetectionConfidence(): Float {
-            return minPoseDetectionConfidence
-        }
-
-        fun minPosePresenceConfidence(): Float {
-            return minPosePresenceConfidence
-        }
-
-        fun minTrackingConfidence(): Float {
-            return minTrackingConfidence
-        }
-
-        fun numPoses(): Int {
-            return numPoses
-        }
-
-        fun outputSegmentationMasks(): Boolean {
-            return outputSegmentationMasks
-        }
-
-        fun runningMode(): RunningMode {
-            return runningMode
-        }
-    }
-
-    public class InteractiveSegmenterSettingsInternal @JvmOverloads constructor(
-        private val outputConfidenceMasks: Boolean = DEFAULT_OUTPUT_CONFIDENCE_MASKS,
-        private val outputCategoryMask: Boolean = DEFAULT_OUTPUT_CATEGORY_MASK,
-        private val runningMode: RunningMode = DEFAULT_RUNNING_MODE
-    ) {
-        fun outputConfidenceMasks(): Boolean {
-            return outputConfidenceMasks
-        }
-
-        fun outputCategoryMask(): Boolean {
-            return outputCategoryMask
-        }
-
-        fun runningMode(): RunningMode {
-            return runningMode
-        }
-    }
-
-    public class ImageSegmenterSettingsInternal @JvmOverloads constructor(
-        private val outputConfidenceMasks: Boolean = DEFAULT_OUTPUT_CONFIDENCE_MASKS,
-        private val outputCategoryMask: Boolean = DEFAULT_OUTPUT_CATEGORY_MASK,
-        private val displayNamesLocale: String? = DEFAULT_DISPLAY_NAMES_LOCALE,
-        private val runningMode: RunningMode = DEFAULT_RUNNING_MODE
-    ) {
-        fun outputConfidenceMasks(): Boolean {
-            return outputConfidenceMasks
-        }
-
-        fun outputCategoryMask(): Boolean {
-            return outputCategoryMask
-        }
-
-        fun displayNamesLocale(): String? {
-            return displayNamesLocale
-        }
-
-        fun runningMode(): RunningMode {
-            return runningMode
-        }
-    }
-
     /**
      * Removes a previously added model download listener.
      *
@@ -419,67 +229,96 @@ open class VisionProviderBase(private val context: Context) {
     ): Future<InteractiveSegmenter> {
         val future = CompletableFuture<InteractiveSegmenter>()
 
-        val downloader = AIPackDownloader(context)
-        val packName = "aipack-" + model.enumName.lowercase().replace("_", "-")
-        val modelPath = getAbsoluteAiAssetPath(packName, model.createModelFileName())
+        downloadNpuModuleIfNeeded("mediapipe_tasks_delegate_" + soc).whenComplete { dispatchLibraryPath, npuException ->
+            if (npuException != null) {
+                Log.e("VisionProvider", "Failed to prepare NPU module.", npuException)
+                future.completeExceptionally(npuException)
+                return@whenComplete
+            }
 
-        downloader.setListener(object : AIPackDownloader.DownloadListener {
-            override fun onStatusUpdate(status: DownloadStatus) {
-                when (status) {
-                    is DownloadStatus.Completed -> {
-                        Log.d("VisionProvider", "AI Pack '${packName}' downloaded successfully.")
-                        // Once the download is complete, the asset pack is available to the app's
-                        // AssetManager. We can now proceed with creating the MediaPipe task.
-                        Executors.newSingleThreadExecutor().submit {
-                            try {
-                                val baseOptionsBuilder = BaseOptions.builder()
-                                    .setModelAssetPath(modelPath)
-// runnign mode?
+            val downloader = AIPackDownloader(context)
 
-                                val optionsBuilder =
-                                    InteractiveSegmenter.InteractiveSegmenterOptions.builder()
-                                        .setBaseOptions(baseOptionsBuilder.build())
-                                        .setOutputConfidenceMasks(settings.outputConfidenceMasks())
-                                        .setOutputCategoryMask(settings.outputCategoryMask())
+            val packName = "aipack-" + model.enumName.lowercase().replace("_", "-")
+            val modelPath = getAbsoluteAiAssetPath(packName, model.createModelFileName())
 
-                                val segmenter = InteractiveSegmenter.createFromOptions(context, optionsBuilder.build())
-                                future.complete(segmenter)
-                            } catch (e: Exception) {
-                                future.completeExceptionally(e)
-                            } finally {
-                                downloader.removeListener()
+            downloader.setListener(object : AIPackDownloader.DownloadListener {
+                override fun onStatusUpdate(status: DownloadStatus) {
+                    when (status) {
+                        is DownloadStatus.Completed -> {
+                            Log.d(
+                                "VisionProvider",
+                                "AI Pack '${packName}' downloaded successfully."
+                            )
+                            // Once the download is complete, the asset pack is available to the app's
+                            // AssetManager. We can now proceed with creating the MediaPipe task.
+                            Executors.newSingleThreadExecutor().submit {
+                                try {
+                                    val baseOptionsBuilder = BaseOptions.builder()
+                                        .setModelAssetPath(modelPath)
+
+                                    if (dispatchLibraryPath) {
+                                        baseOptionsBuilder.setDelegate(Delegate.NPU).setDelegateOptions(
+                                            BaseOptions.DelegateOptions.npuOptions())
+                                    }
+                                    // runnign mode?
+
+                                    val optionsBuilder =
+                                        InteractiveSegmenter.InteractiveSegmenterOptions.builder()
+                                            .setBaseOptions(baseOptionsBuilder.build())
+                                            .setOutputConfidenceMasks(settings.outputConfidenceMasks())
+                                            .setOutputCategoryMask(settings.outputCategoryMask())
+
+                                    val segmenter = InteractiveSegmenter.createFromOptions(
+                                        context,
+                                        optionsBuilder.build()
+                                    )
+                                    future.complete(segmenter)
+                                } catch (e: Exception) {
+                                    future.completeExceptionally(e)
+                                } finally {
+                                    downloader.removeListener()
+                                }
                             }
                         }
-                    }
-                    is DownloadStatus.Failed -> {
-                        val errorMessage = "Failed to download AI Pack '${packName}' with error code: ${status.errorCode}"
-                        Log.e("VisionProvider", errorMessage)
-                        future.completeExceptionally(RuntimeException(errorMessage))
-                        downloader.removeListener()
-                    }
-                    is DownloadStatus.Downloading -> {
-                        // You can log progress, but the Future doesn't support progress updates.
-                        Log.i("VisionProvider", "Downloading '${packName}': ${status.progress}%")
-                    }
-                    is DownloadStatus.Idle -> {
-                        // The downloader is idle, waiting for the download to start.
+
+                        is DownloadStatus.Failed -> {
+                            val errorMessage =
+                                "Failed to download AI Pack '${packName}' with error code: ${status.errorCode}"
+                            Log.e("VisionProvider", errorMessage)
+                            future.completeExceptionally(RuntimeException(errorMessage))
+                            downloader.removeListener()
+                        }
+
+                        is DownloadStatus.Downloading -> {
+                            // You can log progress, but the Future doesn't support progress updates.
+                            Log.i(
+                                "VisionProvider",
+                                "Downloading '${packName}': ${status.progress}%"
+                            )
+                        }
+
+                        is DownloadStatus.Idle -> {
+                            // The downloader is idle, waiting for the download to start.
+                        }
                     }
                 }
-            }
 
-            override fun onShowConfirmationDialog(activity: Activity, status: AssetPackState) {
-                // This provider class cannot show a UI dialog.
-                // We fail the future and let the calling UI layer handle the user confirmation.
-                val errorMessage = "User confirmation required to download '${packName}'. The UI must handle this."
-                Log.w("VisionProvider", errorMessage)
-                future.completeExceptionally(IllegalStateException(errorMessage))
-                downloader.removeListener()
-            }
-        })
+                override fun onShowConfirmationDialog(activity: Activity, status: AssetPackState) {
+                    // This provider class cannot show a UI dialog.
+                    // We fail the future and let the calling UI layer handle the user confirmation.
+                    val errorMessage =
+                        "User confirmation required to download '${packName}'. The UI must handle this."
+                    Log.w("VisionProvider", errorMessage)
+                    future.completeExceptionally(IllegalStateException(errorMessage))
+                    downloader.removeListener()
+                }
+            })
 
-        // Start the download process.
-        Log.d("VisionProvider", "Requesting download for AI Pack: '${packName}'")
-        downloader.downloadPack(packName)
+
+            // Start the download process.
+            Log.d("VisionProvider", "Requesting download for AI Pack: '${packName}'")
+            downloader.downloadPack(packName)
+        }
 
         return future
     }
@@ -494,32 +333,5 @@ open class VisionProviderBase(private val context: Context) {
     ): Future<PoseLandmarker> {
         throw UnsupportedOperationException()
     }
-
-    companion object {
-        // Reusable Constants
-        const val DEFAULT_CONFIDENCE: Float = 0.5f
-        const val DEFAULT_NUM_RESULTS: Int = 1
-        const val UNLIMITED_RESULTS: Int = -1
-        const val DEFAULT_OUTPUT_BLENDSHAPES: Boolean = false
-        const val DEFAULT_OUTPUT_FACIAL_TRANSFORMATION_MATRIXES: Boolean = false
-          val DEFAULT_RUNNING_MODE: RunningMode = RunningMode.IMAGE
-        const val DEFAULT_DISPLAY_NAMES_LOCALE: String = "en"
-        val DEFAULT_CATEGORY_LIST: List<String> = listOf()
-        const val DEFAULT_L2_NORMALIZE: Boolean = false
-        const val DEFAULT_QUANTIZE: Boolean = false
-        const val DEFAULT_OUTPUT_CONFIDENCE_MASKS: Boolean = false
-        const val DEFAULT_OUTPUT_CATEGORY_MASK: Boolean = false
-        const val DEFAULT_OUTPUT_SEGMENTATION_MASKS: Boolean = false
-
-        /**
-         * Adds a listener for model download events.
-         *
-         * @param listener The listener to add.
-         */
-        fun addModelDownloadListener(
-            model: VisionModel, listener: DownloadListener
-        ) {
-            throw UnsupportedOperationException()
-        }
-    }
 }
+
