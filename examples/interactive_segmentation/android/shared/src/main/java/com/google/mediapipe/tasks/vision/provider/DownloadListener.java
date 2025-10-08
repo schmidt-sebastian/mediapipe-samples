@@ -10,17 +10,17 @@ public interface DownloadListener {
     /**
      * Called when download progress is updated.
      */
-    void onProgress(@NonNull VisionModel model, float progress);
+    void onProgress(float progress);
 
     /**
      * Called when the model has been successfully downloaded.
      */
-    void onCompleted(@NonNull VisionModel model);
+    void onCompleted();
 
     /**
      * Called when the model download fails.
      */
-    void onFailed(@NonNull VisionModel model, @NonNull Exception e);
+    void onFailed( @NonNull Exception e);
 
     //fun onShowConfirmationDialog(activity: Activity, status: AssetPackState) {
 }

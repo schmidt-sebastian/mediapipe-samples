@@ -44,9 +44,9 @@ class AIPackDownloader(context: Context) {
 
     private fun updateDownloadStatus(state: AssetPackState) {
         when (state.status()) {
-            AssetPackStatus.PENDING -> listener?.onStatusUpdate(DownloadStatus.Downloading(0))
+            AssetPackStatus.PENDING -> listener?.onStatusUpdate(DownloadStatus.Downloading(0.0F))
             AssetPackStatus.DOWNLOADING -> {
-                val progress = (state.bytesDownloaded() * 100 / state.totalBytesToDownload()).toInt()
+                val progress = state.bytesDownloaded() * 1.0F / state.totalBytesToDownload()
                 listener?.onStatusUpdate(DownloadStatus.Downloading(progress))
             }
             AssetPackStatus.COMPLETED -> {
@@ -63,7 +63,7 @@ class AIPackDownloader(context: Context) {
             AssetPackStatus.WAITING_FOR_WIFI -> {
                 // You can optionally show a dialog to the user to ask for permission to download over cellular data.
                 // In this example, we'll just treat it as a downloading state.
-                listener?.onStatusUpdate(DownloadStatus.Downloading(0))
+                listener?.onStatusUpdate(DownloadStatus.Downloading(0.0F))
             }
             AssetPackStatus.REQUIRES_USER_CONFIRMATION -> {
                 // In this state, you must show a confirmation dialog to the user.
