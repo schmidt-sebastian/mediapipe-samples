@@ -3,7 +3,9 @@ package com.google.mediapipe.tasks.vision.provider
 import android.app.Activity
 import android.content.Context
 import android.content.res.AssetFileDescriptor
+import android.os.Build.SOC_MODEL
 import android.util.Log
+import com.google.android.play.core.aipacks.AiPackLocation
 import com.google.android.play.core.aipacks.AiPackManager
 import com.google.android.play.core.aipacks.AiPackManagerFactory
 import com.google.android.play.core.assetpacks.AssetPackState
@@ -26,16 +28,13 @@ import com.google.mediapipe.tasks.vision.interactivesegmenter.InteractiveSegment
 import com.google.mediapipe.tasks.vision.objectdetector.ObjectDetector
 import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarker
 import java.io.File
-import java.io.FileOutputStream
-import java.io.IOException
+import java.io.FileInputStream
+import java.io.FileNotFoundException
+import java.nio.ByteBuffer
+import java.nio.channels.FileChannel
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
-import java.util.zip.ZipFile
-import android.os.Build.SOC_MODEL
-import com.google.android.play.core.aipacks.AiPackLocation
-import java.io.FileInputStream
-import java.nio.channels.FileChannel
 
 
 open class VisionProviderBase(private val context: Context) {
@@ -210,50 +209,64 @@ open class VisionProviderBase(private val context: Context) {
     }
 
     /**
-     * Generic helper to create a BaseOptions builder with a model path and an optional NPU delegate.
+     * Unified method to load the model file into a ByteBuffer.
+     * It prioritizes the downloaded AI Pack and falls back to the app's local assets.
      */
-    private fun createBaseOptions(
-        modelAssetPath: String?,
-        assetFd: AssetFileDescriptor?,
-        dispatchLibraryPath: String?
-    ): BaseOptions.Builder {
-        val baseOptionsBuilder = BaseOptions.builder()
+    private fun getModelAsBuffer(model: VisionModel): ByteBuffer {
+        val packName = "aipack_" + model.enumName
+        val filename = model.createModelFileName()
+        val packLocation = aiPackManager.getPackLocation(packName)
 
-        if (modelAssetPath != null) {
-            baseOptionsBuilder.setModelAssetPath(modelAssetPath)
-        } else if (assetFd != null) {
-            FileInputStream(assetFd.fileDescriptor).use { inputStream ->
-                // Memory-map the file channel to get a direct ByteBuffer
-                val modelBuffer = inputStream.channel.map(
-                    FileChannel.MapMode.READ_ONLY,
-                    assetFd.startOffset,
-                    assetFd.declaredLength
-                )
-                baseOptionsBuilder.setModelAssetBuffer(modelBuffer)
+        // Prioritize downloaded AI Pack if available
+        if (packLocation?.assetsPath() != null) {
+            val modelPath = getAbsoluteAiAssetPath(packLocation, filename)
+            val modelFile = File(modelPath)
+            if (modelFile.exists()) {
+                return FileInputStream(modelFile).use { inputStream ->
+                    inputStream.channel.map(
+                        FileChannel.MapMode.READ_ONLY, 0, modelFile.length()
+                    )
+                }
+            } else {
+                throw FileNotFoundException("Model file not found: " + modelFile)
             }
         }
+
+        // Fallback to model included in the app's assets directory
+        return context.assets.openFd("model/$filename").use { afd ->
+            FileInputStream(afd.fileDescriptor).use { inputStream ->
+                inputStream.channel.map(
+                    FileChannel.MapMode.READ_ONLY, afd.startOffset, afd.declaredLength
+                )
+            }
+        }
+    }
+
+    /**
+     * Generic helper to create a BaseOptions builder with a model buffer and an optional NPU delegate.
+     */
+    private fun createBaseOptions(
+        modelAssetBuffer: ByteBuffer, dispatchLibraryPath: String?
+    ): BaseOptions.Builder {
+        val baseOptionsBuilder = BaseOptions.builder().setModelAssetBuffer(modelAssetBuffer)
 
         // Apply the NPU delegate if a dispatch library path is available
         if (dispatchLibraryPath != null) {
             val npuOptions = BaseOptions.DelegateOptions.NpuOptions.builder()
-                .setDispatchLibraryDirectory(dispatchLibraryPath)
-                .build()
+                .setDispatchLibraryDirectory(dispatchLibraryPath).build()
             baseOptionsBuilder.setDelegate(Delegate.NPU).setDelegateOptions(npuOptions)
         }
         return baseOptionsBuilder
     }
 
-    private fun createFaceDetectorFromPath(
+    private fun createFaceDetector(
         context: Context,
-        modelAssetPath: String?,
-        modelAssetFd: AssetFileDescriptor?,
+        modelAssetBuffer: ByteBuffer,
         dispatchLibraryPath: String?,
         settings: FaceDetectorSettingsInternal
     ): FaceDetector {
-        val baseOptions =
-            createBaseOptions(modelAssetPath, modelAssetFd, dispatchLibraryPath).build()
-        val optionsBuilder = FaceDetector.FaceDetectorOptions.builder()
-            .setBaseOptions(baseOptions)
+        val baseOptions = createBaseOptions(modelAssetBuffer, dispatchLibraryPath).build()
+        val optionsBuilder = FaceDetector.FaceDetectorOptions.builder().setBaseOptions(baseOptions)
             .setRunningMode(settings.runningMode())
             .setMinDetectionConfidence(settings.minDetectionConfidence())
             .setMinSuppressionThreshold(settings.minSuppressionThreshold())
@@ -266,24 +279,21 @@ open class VisionProviderBase(private val context: Context) {
         return FaceDetector.createFromOptions(context, optionsBuilder.build())
     }
 
-    private fun createFaceLandmarkerFromPath(
+    private fun createFaceLandmarker(
         context: Context,
-        modelAssetPath: String?,
-        modelAssetFd: AssetFileDescriptor?,
+        modelAssetBuffer: ByteBuffer,
         dispatchLibraryPath: String?,
         settings: FaceLandmarkerSettingsInternal
     ): FaceLandmarker {
-        val baseOptions =
-            createBaseOptions(modelAssetPath, modelAssetFd, dispatchLibraryPath).build()
-        val optionsBuilder = FaceLandmarker.FaceLandmarkerOptions.builder()
-            .setBaseOptions(baseOptions)
-            .setRunningMode(settings.runningMode())
-            .setNumFaces(settings.numFaces())
-            .setMinFaceDetectionConfidence(settings.minFaceDetectionConfidence())
-            .setMinFacePresenceConfidence(settings.minFacePresenceConfidence())
-            .setMinTrackingConfidence(settings.minTrackingConfidence())
-            .setOutputFaceBlendshapes(settings.outputFaceBlendshapes())
-            .setOutputFacialTransformationMatrixes(settings.outputFacialTransformationMatrixes())
+        val baseOptions = createBaseOptions(modelAssetBuffer, dispatchLibraryPath).build()
+        val optionsBuilder =
+            FaceLandmarker.FaceLandmarkerOptions.builder().setBaseOptions(baseOptions)
+                .setRunningMode(settings.runningMode()).setNumFaces(settings.numFaces())
+                .setMinFaceDetectionConfidence(settings.minFaceDetectionConfidence())
+                .setMinFacePresenceConfidence(settings.minFacePresenceConfidence())
+                .setMinTrackingConfidence(settings.minTrackingConfidence())
+                .setOutputFaceBlendshapes(settings.outputFaceBlendshapes())
+                .setOutputFacialTransformationMatrixes(settings.outputFacialTransformationMatrixes())
         settings.resultListener()?.let {
             optionsBuilder.setResultListener(it)
         }
@@ -293,22 +303,19 @@ open class VisionProviderBase(private val context: Context) {
         return FaceLandmarker.createFromOptions(context, optionsBuilder.build())
     }
 
-    private fun createGestureRecognizerFromPath(
+    private fun createGestureRecognizer(
         context: Context,
-        modelAssetPath: String?,
-        modelAssetFd: AssetFileDescriptor?,
+        modelAssetBuffer: ByteBuffer,
         dispatchLibraryPath: String?,
         settings: GestureRecognizerSettingsInternal
     ): GestureRecognizer {
-        val baseOptions =
-            createBaseOptions(modelAssetPath, modelAssetFd, dispatchLibraryPath).build()
-        val optionsBuilder = GestureRecognizer.GestureRecognizerOptions.builder()
-            .setBaseOptions(baseOptions)
-            .setRunningMode(settings.runningMode())
-            .setNumHands(settings.numHands())
-            .setMinHandDetectionConfidence(settings.minHandDetectionConfidence())
-            .setMinHandPresenceConfidence(settings.minHandPresenceConfidence())
-            .setMinTrackingConfidence(settings.minTrackingConfidence())
+        val baseOptions = createBaseOptions(modelAssetBuffer, dispatchLibraryPath).build()
+        val optionsBuilder =
+            GestureRecognizer.GestureRecognizerOptions.builder().setBaseOptions(baseOptions)
+                .setRunningMode(settings.runningMode()).setNumHands(settings.numHands())
+                .setMinHandDetectionConfidence(settings.minHandDetectionConfidence())
+                .setMinHandPresenceConfidence(settings.minHandPresenceConfidence())
+                .setMinTrackingConfidence(settings.minTrackingConfidence())
         settings.resultListener()?.let {
             optionsBuilder.setResultListener(it)
         }
@@ -318,22 +325,19 @@ open class VisionProviderBase(private val context: Context) {
         return GestureRecognizer.createFromOptions(context, optionsBuilder.build())
     }
 
-    private fun createHandLandmarkerFromPath(
+    private fun createHandLandmarker(
         context: Context,
-        modelAssetPath: String?,
-        modelAssetFd: AssetFileDescriptor?,
+        modelAssetBuffer: ByteBuffer,
         dispatchLibraryPath: String?,
         settings: HandLandmarkerSettingsInternal
     ): HandLandmarker {
-        val baseOptions =
-            createBaseOptions(modelAssetPath, modelAssetFd, dispatchLibraryPath).build()
-        val optionsBuilder = HandLandmarker.HandLandmarkerOptions.builder()
-            .setBaseOptions(baseOptions)
-            .setRunningMode(settings.runningMode())
-            .setNumHands(settings.numHands())
-            .setMinHandDetectionConfidence(settings.minHandDetectionConfidence())
-            .setMinHandPresenceConfidence(settings.minHandPresenceConfidence())
-            .setMinTrackingConfidence(settings.minTrackingConfidence())
+        val baseOptions = createBaseOptions(modelAssetBuffer, dispatchLibraryPath).build()
+        val optionsBuilder =
+            HandLandmarker.HandLandmarkerOptions.builder().setBaseOptions(baseOptions)
+                .setRunningMode(settings.runningMode()).setNumHands(settings.numHands())
+                .setMinHandDetectionConfidence(settings.minHandDetectionConfidence())
+                .setMinHandPresenceConfidence(settings.minHandPresenceConfidence())
+                .setMinTrackingConfidence(settings.minTrackingConfidence())
         settings.resultListener()?.let {
             optionsBuilder.setResultListener(it)
         }
@@ -343,23 +347,20 @@ open class VisionProviderBase(private val context: Context) {
         return HandLandmarker.createFromOptions(context, optionsBuilder.build())
     }
 
-    private fun createImageClassifierFromPath(
+    private fun createImageClassifier(
         context: Context,
-        modelAssetPath: String?,
-        modelAssetFd: AssetFileDescriptor?,
+        modelAssetBuffer: ByteBuffer,
         dispatchLibraryPath: String?,
         settings: ImageClassifierSettingsInternal
     ): ImageClassifier {
-        val baseOptions =
-            createBaseOptions(modelAssetPath, modelAssetFd, dispatchLibraryPath).build()
-        val optionsBuilder = ImageClassifier.ImageClassifierOptions.builder()
-            .setBaseOptions(baseOptions)
-            .setRunningMode(settings.runningMode())
-            .setDisplayNamesLocale(settings.displayNamesLocale())
-            .setMaxResults(settings.maxResults())
-            .setScoreThreshold(settings.scoreThreshold())
-            .setCategoryAllowlist(settings.categoryAllowlist())
-            .setCategoryDenylist(settings.categoryDenylist())
+        val baseOptions = createBaseOptions(modelAssetBuffer, dispatchLibraryPath).build()
+        val optionsBuilder =
+            ImageClassifier.ImageClassifierOptions.builder().setBaseOptions(baseOptions)
+                .setRunningMode(settings.runningMode())
+                .setDisplayNamesLocale(settings.displayNamesLocale())
+                .setMaxResults(settings.maxResults()).setScoreThreshold(settings.scoreThreshold())
+                .setCategoryAllowlist(settings.categoryAllowlist())
+                .setCategoryDenylist(settings.categoryDenylist())
         settings.resultListener()?.let {
             optionsBuilder.setResultListener(it)
         }
@@ -369,20 +370,17 @@ open class VisionProviderBase(private val context: Context) {
         return ImageClassifier.createFromOptions(context, optionsBuilder.build())
     }
 
-    private fun createImageEmbedderFromPath(
+    private fun createImageEmbedder(
         context: Context,
-        modelAssetPath: String?,
-        modelAssetFd: AssetFileDescriptor?,
+        modelAssetBuffer: ByteBuffer,
         dispatchLibraryPath: String?,
         settings: ImageEmbedderSettingsInternal
     ): ImageEmbedder {
-        val baseOptions =
-            createBaseOptions(modelAssetPath, modelAssetFd, dispatchLibraryPath).build()
-        val optionsBuilder = ImageEmbedder.ImageEmbedderOptions.builder()
-            .setBaseOptions(baseOptions)
-            .setRunningMode(settings.runningMode())
-            .setL2Normalize(settings.l2Normalize())
-            .setQuantize(settings.quantize())
+        val baseOptions = createBaseOptions(modelAssetBuffer, dispatchLibraryPath).build()
+        val optionsBuilder =
+            ImageEmbedder.ImageEmbedderOptions.builder().setBaseOptions(baseOptions)
+                .setRunningMode(settings.runningMode()).setL2Normalize(settings.l2Normalize())
+                .setQuantize(settings.quantize())
         settings.resultListener()?.let {
             optionsBuilder.setResultListener(it)
         }
@@ -392,20 +390,18 @@ open class VisionProviderBase(private val context: Context) {
         return ImageEmbedder.createFromOptions(context, optionsBuilder.build())
     }
 
-    private fun createImageSegmenterFromPath(
+    private fun createImageSegmenter(
         context: Context,
-        modelAssetPath: String?,
-        modelAssetFd: AssetFileDescriptor?,
+        modelAssetBuffer: ByteBuffer,
         dispatchLibraryPath: String?,
         settings: ImageSegmenterSettingsInternal
     ): ImageSegmenter {
-        val baseOptions =
-            createBaseOptions(modelAssetPath, modelAssetFd, dispatchLibraryPath).build()
-        val optionsBuilder = ImageSegmenter.ImageSegmenterOptions.builder()
-            .setBaseOptions(baseOptions)
-            .setRunningMode(settings.runningMode())
-            .setOutputConfidenceMasks(settings.outputConfidenceMasks())
-            .setOutputCategoryMask(settings.outputCategoryMask())
+        val baseOptions = createBaseOptions(modelAssetBuffer, dispatchLibraryPath).build()
+        val optionsBuilder =
+            ImageSegmenter.ImageSegmenterOptions.builder().setBaseOptions(baseOptions)
+                .setRunningMode(settings.runningMode())
+                .setOutputConfidenceMasks(settings.outputConfidenceMasks())
+                .setOutputCategoryMask(settings.outputCategoryMask())
         settings.resultListener()?.let {
             optionsBuilder.setResultListener(it)
         }
@@ -415,19 +411,17 @@ open class VisionProviderBase(private val context: Context) {
         return ImageSegmenter.createFromOptions(context, optionsBuilder.build())
     }
 
-    private fun createInteractiveSegmenterFromPath(
+    private fun createInteractiveSegmenter(
         context: Context,
-        modelAssetPath: String?,
-        modelAssetFd: AssetFileDescriptor?,
+        modelAssetBuffer: ByteBuffer,
         dispatchLibraryPath: String?,
         settings: InteractiveSegmenterSettingsInternal
     ): InteractiveSegmenter {
-        val baseOptions =
-            createBaseOptions(modelAssetPath, modelAssetFd, dispatchLibraryPath).build()
-        val optionsBuilder = InteractiveSegmenter.InteractiveSegmenterOptions.builder()
-            .setBaseOptions(baseOptions)
-            .setOutputConfidenceMasks(settings.outputConfidenceMasks())
-            .setOutputCategoryMask(settings.outputCategoryMask())
+        val baseOptions = createBaseOptions(modelAssetBuffer, dispatchLibraryPath).build()
+        val optionsBuilder =
+            InteractiveSegmenter.InteractiveSegmenterOptions.builder().setBaseOptions(baseOptions)
+                .setOutputConfidenceMasks(settings.outputConfidenceMasks())
+                .setOutputCategoryMask(settings.outputCategoryMask())
         settings.resultListener()?.let {
             optionsBuilder.setResultListener(it)
         }
@@ -437,23 +431,20 @@ open class VisionProviderBase(private val context: Context) {
         return InteractiveSegmenter.createFromOptions(context, optionsBuilder.build())
     }
 
-    private fun createObjectDetectorFromPath(
+    private fun createObjectDetector(
         context: Context,
-        modelAssetPath: String?,
-        modelAssetFd: AssetFileDescriptor?,
+        modelAssetBuffer: ByteBuffer,
         dispatchLibraryPath: String?,
         settings: ObjectDetectorSettingsInternal
     ): ObjectDetector {
-        val baseOptions =
-            createBaseOptions(modelAssetPath, modelAssetFd, dispatchLibraryPath).build()
-        val optionsBuilder = ObjectDetector.ObjectDetectorOptions.builder()
-            .setBaseOptions(baseOptions)
-            .setRunningMode(settings.runningMode())
-            .setDisplayNamesLocale(settings.displayNamesLocale())
-            .setMaxResults(settings.maxResults())
-            .setScoreThreshold(settings.scoreThreshold())
-            .setCategoryAllowlist(settings.categoryAllowlist())
-            .setCategoryDenylist(settings.categoryDenylist())
+        val baseOptions = createBaseOptions(modelAssetBuffer, dispatchLibraryPath).build()
+        val optionsBuilder =
+            ObjectDetector.ObjectDetectorOptions.builder().setBaseOptions(baseOptions)
+                .setRunningMode(settings.runningMode())
+                .setDisplayNamesLocale(settings.displayNamesLocale())
+                .setMaxResults(settings.maxResults()).setScoreThreshold(settings.scoreThreshold())
+                .setCategoryAllowlist(settings.categoryAllowlist())
+                .setCategoryDenylist(settings.categoryDenylist())
         settings.resultListener()?.let {
             optionsBuilder.setResultListener(it)
         }
@@ -463,23 +454,20 @@ open class VisionProviderBase(private val context: Context) {
         return ObjectDetector.createFromOptions(context, optionsBuilder.build())
     }
 
-    private fun createPoseLandmarkerFromPath(
+    private fun createPoseLandmarker(
         context: Context,
-        modelAssetPath: String?,
-        modelAssetFd: AssetFileDescriptor?,
+        modelAssetBuffer: ByteBuffer,
         dispatchLibraryPath: String?,
         settings: PoseLandmarkerSettingsInternal
     ): PoseLandmarker {
-        val baseOptions =
-            createBaseOptions(modelAssetPath, modelAssetFd, dispatchLibraryPath).build()
-        val optionsBuilder = PoseLandmarker.PoseLandmarkerOptions.builder()
-            .setBaseOptions(baseOptions)
-            .setRunningMode(settings.runningMode())
-            .setNumPoses(settings.numPoses())
-            .setMinPoseDetectionConfidence(settings.minPoseDetectionConfidence())
-            .setMinPosePresenceConfidence(settings.minPosePresenceConfidence())
-            .setMinTrackingConfidence(settings.minTrackingConfidence())
-            .setOutputSegmentationMasks(settings.outputSegmentationMasks())
+        val baseOptions = createBaseOptions(modelAssetBuffer, dispatchLibraryPath).build()
+        val optionsBuilder =
+            PoseLandmarker.PoseLandmarkerOptions.builder().setBaseOptions(baseOptions)
+                .setRunningMode(settings.runningMode()).setNumPoses(settings.numPoses())
+                .setMinPoseDetectionConfidence(settings.minPoseDetectionConfidence())
+                .setMinPosePresenceConfidence(settings.minPosePresenceConfidence())
+                .setMinTrackingConfidence(settings.minTrackingConfidence())
+                .setOutputSegmentationMasks(settings.outputSegmentationMasks())
         settings.resultListener()?.let {
             optionsBuilder.setResultListener(it)
         }
@@ -496,7 +484,7 @@ open class VisionProviderBase(private val context: Context) {
     private fun <T, S> createTask(
         model: VisionModel,
         settings: S,
-        creator: (Context, String?, AssetFileDescriptor?, String?, S) -> T
+        creator: (Context, ByteBuffer, String?, S) -> T
     ): Future<T> {
         val future = CompletableFuture<T>()
 
@@ -509,27 +497,17 @@ open class VisionProviderBase(private val context: Context) {
 
             val packName = "aipack_" + model.enumName
             try {
-                val packLocation = aiPackManager.getPackLocation(packName)
-                if (packLocation != null) {
+                if (aiPackManager.getPackLocation(packName) != null) {
                     Log.d(
                         "VisionProvider",
                         "AI Pack '$packName' is already installed. Creating task."
                     )
-                    val filename = model.createModelFileName()
                     Executors.newSingleThreadExecutor().submit {
                         try {
-                            if (packLocation.assetsPath() != null) {
-                                val modelPath =
-                                    getAbsoluteAiAssetPath(packLocation, filename)
-                                val task =
-                                    creator(context, modelPath, null, dispatchLibraryPath, settings)
-                                future.complete(task)
-                            } else {
-                                val fd = context.assets.openFd("model/" + filename)
-                                val task =
-                                    creator(context, null, fd, dispatchLibraryPath, settings)
-                                future.complete(task)
-                            }
+                            val modelBuffer = getModelAsBuffer(model)
+                            val task =
+                                creator(context, modelBuffer, dispatchLibraryPath, settings)
+                            future.complete(task)
                         } catch (e: Exception) {
                             future.completeExceptionally(e)
                         }
@@ -537,12 +515,7 @@ open class VisionProviderBase(private val context: Context) {
                 } else {
                     Log.d("VisionProvider", "AI Pack '$packName' not found. Starting download.")
                     initiateAIPackDownloadForTask(
-                        future,
-                        packName,
-                        model,
-                        dispatchLibraryPath,
-                        settings,
-                        creator
+                        future, packName, model, dispatchLibraryPath, settings, creator
                     )
                 }
             } catch (e: Exception) {
@@ -561,7 +534,7 @@ open class VisionProviderBase(private val context: Context) {
         model: VisionModel,
         dispatchLibraryPath: String?,
         settings: S,
-        creator: (Context, String?, AssetFileDescriptor?, String?, S) -> T
+        creator: (Context, ByteBuffer, String?, S) -> T
     ) {
         val downloader = AIPackDownloader(context)
         downloader.setListener(object : AIPackDownloader.DownloadListener {
@@ -570,32 +543,13 @@ open class VisionProviderBase(private val context: Context) {
                     is DownloadStatus.Completed -> {
                         Log.d("VisionProvider", "AI Pack '$packName' downloaded. Creating task.")
                         notifyModelListeners(model) { it.onCompleted() }
-                        val packLocation = aiPackManager.getPackLocation(packName)
 
                         Executors.newSingleThreadExecutor().submit {
                             try {
-                                if (packLocation == null || packLocation.assetsPath() == null) {
-                                    val fd = context.assets.openFd(model.createModelFileName())
-                                    val task =
-                                        creator(context, null, fd, dispatchLibraryPath, settings)
-                                    future.complete(task)
-                                } else {
-                                    val modelPath =
-                                        getAbsoluteAiAssetPath(
-                                            packLocation,
-                                            model.createModelFileName()
-                                        )
-                                    val task =
-                                        creator(
-                                            context,
-                                            modelPath,
-                                            null,
-                                            dispatchLibraryPath,
-                                            settings
-                                        )
-                                    future.complete(task)
-                                }
-
+                                val modelBuffer = getModelAsBuffer(model)
+                                val task =
+                                    creator(context, modelBuffer, dispatchLibraryPath, settings)
+                                future.complete(task)
                             } catch (e: Exception) {
                                 future.completeExceptionally(e)
                             } finally {
@@ -639,44 +593,43 @@ open class VisionProviderBase(private val context: Context) {
 
     fun createFaceDetectorImpl(
         model: VisionModel, settings: FaceDetectorSettingsInternal
-    ): Future<FaceDetector> = createTask(model, settings, ::createFaceDetectorFromPath)
+    ): Future<FaceDetector> = createTask(model, settings, ::createFaceDetector)
 
     fun createFaceLandmarkerImpl(
         model: VisionModel, settings: FaceLandmarkerSettingsInternal
-    ): Future<FaceLandmarker> = createTask(model, settings, ::createFaceLandmarkerFromPath)
+    ): Future<FaceLandmarker> = createTask(model, settings, ::createFaceLandmarker)
 
     fun createGestureRecognizerImpl(
         model: VisionModel, settings: GestureRecognizerSettingsInternal
-    ): Future<GestureRecognizer> = createTask(model, settings, ::createGestureRecognizerFromPath)
+    ): Future<GestureRecognizer> = createTask(model, settings, ::createGestureRecognizer)
 
     fun createHandLandmarkerImpl(
         model: VisionModel, settings: HandLandmarkerSettingsInternal
-    ): Future<HandLandmarker> = createTask(model, settings, ::createHandLandmarkerFromPath)
+    ): Future<HandLandmarker> = createTask(model, settings, ::createHandLandmarker)
 
     fun createImageClassifierImpl(
         model: VisionModel, settings: ImageClassifierSettingsInternal
-    ): Future<ImageClassifier> = createTask(model, settings, ::createImageClassifierFromPath)
+    ): Future<ImageClassifier> = createTask(model, settings, ::createImageClassifier)
 
     fun createImageEmbedderImpl(
         model: VisionModel, settings: ImageEmbedderSettingsInternal
-    ): Future<ImageEmbedder> = createTask(model, settings, ::createImageEmbedderFromPath)
+    ): Future<ImageEmbedder> = createTask(model, settings, ::createImageEmbedder)
 
     fun createImageSegmenterImpl(
         model: VisionModel, settings: ImageSegmenterSettingsInternal
-    ): Future<ImageSegmenter> = createTask(model, settings, ::createImageSegmenterFromPath)
+    ): Future<ImageSegmenter> = createTask(model, settings, ::createImageSegmenter)
 
     fun createInteractiveSegmenterImpl(
         model: VisionModel, settings: InteractiveSegmenterSettingsInternal
-    ): Future<InteractiveSegmenter> =
-        createTask(model, settings, ::createInteractiveSegmenterFromPath)
+    ): Future<InteractiveSegmenter> = createTask(model, settings, ::createInteractiveSegmenter)
 
     fun createObjectDetectorImpl(
         model: VisionModel, settings: ObjectDetectorSettingsInternal
-    ): Future<ObjectDetector> = createTask(model, settings, ::createObjectDetectorFromPath)
+    ): Future<ObjectDetector> = createTask(model, settings, ::createObjectDetector)
 
     fun createPoseLandmarkerImpl(
         model: VisionModel, settings: PoseLandmarkerSettingsInternal
-    ): Future<PoseLandmarker> = createTask(model, settings, ::createPoseLandmarkerFromPath)
+    ): Future<PoseLandmarker> = createTask(model, settings, ::createPoseLandmarker)
 
 
     companion object {
