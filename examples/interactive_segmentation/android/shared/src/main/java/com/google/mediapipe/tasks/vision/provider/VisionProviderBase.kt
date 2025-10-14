@@ -3,7 +3,6 @@ package com.google.mediapipe.tasks.vision.provider
 import android.app.Activity
 import android.content.Context
 import android.content.res.AssetFileDescriptor
-import android.content.res.AssetManager
 import android.util.Log
 import com.google.android.play.core.aipacks.AiPackManager
 import com.google.android.play.core.aipacks.AiPackManagerFactory
@@ -37,8 +36,6 @@ import android.os.Build.SOC_MODEL
 import com.google.android.play.core.aipacks.AiPackLocation
 import java.io.FileInputStream
 import java.nio.channels.FileChannel
-import java.security.MessageDigest
-import java.security.NoSuchAlgorithmException
 
 
 open class VisionProviderBase(private val context: Context) {
@@ -213,57 +210,6 @@ open class VisionProviderBase(private val context: Context) {
     }
 
     /**
-     * Finds an asset by searching through the base APK and all installed split APKs.
-     * If found, it copies the asset to the app's cache directory and returns the
-     * absolute file path. Returns null if the asset is not found.
-     *
-     * @param context The application context.
-     * @param relativeAssetPath The path of the asset relative to the `assets` folder,
-     * e.g., "my_model.tflite".
-     * @return The absolute path to the cached asset file, or null if not found.
-     */
-    private fun getAssetPathFromSplits(context: Context, relativeAssetPath: String): String? {
-        val outputFile = File(context.cacheDir, relativeAssetPath)
-
-        // If the file is already cached, just return its path
-        if (outputFile.exists()) {
-            return outputFile.absolutePath
-        }
-
-        val assetPathInApk = "assets/$relativeAssetPath"
-        val appInfo = context.applicationInfo
-
-        // Create a list of all APKs to search (base + splits)
-        val apksToSearch = mutableListOf(appInfo.sourceDir)
-        appInfo.splitSourceDirs?.let { apksToSearch.addAll(it) }
-
-        for (apkPath in apksToSearch) {
-            try {
-                ZipFile(apkPath).use { zip ->
-                    val entry = zip.getEntry(assetPathInApk)
-                    if (entry != null) {
-                        // Asset found, copy it to the cache directory
-                        outputFile.parentFile?.mkdirs()
-                        zip.getInputStream(entry).use { input ->
-                            FileOutputStream(outputFile).use { output ->
-                                input.copyTo(output)
-                            }
-                        }
-                        // Return the path of the newly cached file
-                        return outputFile.absolutePath
-                    }
-                }
-            } catch (e: IOException) {
-                // Could happen if a splitSourceDir path is invalid; continue to the next
-                Log.e("AssetFinder", "Failed to read APK at $apkPath", e)
-            }
-        }
-
-        // Return null if the asset was not found in any APK
-        return null
-    }
-
-    /**
      * Generic helper to create a BaseOptions builder with a model path and an optional NPU delegate.
      */
     private fun createBaseOptions(
@@ -276,23 +222,14 @@ open class VisionProviderBase(private val context: Context) {
         if (modelAssetPath != null) {
             baseOptionsBuilder.setModelAssetPath(modelAssetPath)
         } else if (assetFd != null) {
-            try {
-                // Use Kotlin's 'use' block to automatically close the FileInputStream
-                FileInputStream(assetFd.fileDescriptor).use { inputStream ->
-                    // Memory-map the file channel to get a direct ByteBuffer
-                    val modelBuffer = inputStream.channel.map(
-                        FileChannel.MapMode.READ_ONLY,
-                        assetFd.startOffset,
-                        assetFd.declaredLength
-                    )
-                    // Set the model asset buffer
-                    baseOptionsBuilder.setModelAssetBuffer(modelBuffer)
-                }
-            } catch (e: IOException) {
-                // Log an error if the model cannot be loaded
-                Log.e("MediaPipeSetup", "Failed to load model from AssetFileDescriptor.", e)
-                // Depending on your use case, you might want to re-throw this as a
-                // runtime exception to halt initialization.
+            FileInputStream(assetFd.fileDescriptor).use { inputStream ->
+                // Memory-map the file channel to get a direct ByteBuffer
+                val modelBuffer = inputStream.channel.map(
+                    FileChannel.MapMode.READ_ONLY,
+                    assetFd.startOffset,
+                    assetFd.declaredLength
+                )
+                baseOptionsBuilder.setModelAssetBuffer(modelBuffer)
             }
         }
 
@@ -320,9 +257,12 @@ open class VisionProviderBase(private val context: Context) {
             .setRunningMode(settings.runningMode())
             .setMinDetectionConfidence(settings.minDetectionConfidence())
             .setMinSuppressionThreshold(settings.minSuppressionThreshold())
-//        settings.resultListener()?.let {
-//            optionsBuilder.setResultListener(it)
-//        }
+        settings.resultListener()?.let {
+            optionsBuilder.setResultListener(it)
+        }
+        settings.errorListener()?.let {
+            optionsBuilder.setErrorListener(it)
+        }
         return FaceDetector.createFromOptions(context, optionsBuilder.build())
     }
 
@@ -344,9 +284,12 @@ open class VisionProviderBase(private val context: Context) {
             .setMinTrackingConfidence(settings.minTrackingConfidence())
             .setOutputFaceBlendshapes(settings.outputFaceBlendshapes())
             .setOutputFacialTransformationMatrixes(settings.outputFacialTransformationMatrixes())
-//        settings.resultListener()?.let {
-//            optionsBuilder.setResultListener(it)
-//        }
+        settings.resultListener()?.let {
+            optionsBuilder.setResultListener(it)
+        }
+        settings.errorListener()?.let {
+            optionsBuilder.setErrorListener(it)
+        }
         return FaceLandmarker.createFromOptions(context, optionsBuilder.build())
     }
 
@@ -366,9 +309,12 @@ open class VisionProviderBase(private val context: Context) {
             .setMinHandDetectionConfidence(settings.minHandDetectionConfidence())
             .setMinHandPresenceConfidence(settings.minHandPresenceConfidence())
             .setMinTrackingConfidence(settings.minTrackingConfidence())
-//        settings.resultListener()?.let {
-//            optionsBuilder.setResultListener(it)
-//        }
+        settings.resultListener()?.let {
+            optionsBuilder.setResultListener(it)
+        }
+        settings.errorListener()?.let {
+            optionsBuilder.setErrorListener(it)
+        }
         return GestureRecognizer.createFromOptions(context, optionsBuilder.build())
     }
 
@@ -388,9 +334,12 @@ open class VisionProviderBase(private val context: Context) {
             .setMinHandDetectionConfidence(settings.minHandDetectionConfidence())
             .setMinHandPresenceConfidence(settings.minHandPresenceConfidence())
             .setMinTrackingConfidence(settings.minTrackingConfidence())
-//        settings.resultListener()?.let {
-//            optionsBuilder.setResultListener(it)
-//        }
+        settings.resultListener()?.let {
+            optionsBuilder.setResultListener(it)
+        }
+        settings.errorListener()?.let {
+            optionsBuilder.setErrorListener(it)
+        }
         return HandLandmarker.createFromOptions(context, optionsBuilder.build())
     }
 
@@ -411,9 +360,12 @@ open class VisionProviderBase(private val context: Context) {
             .setScoreThreshold(settings.scoreThreshold())
             .setCategoryAllowlist(settings.categoryAllowlist())
             .setCategoryDenylist(settings.categoryDenylist())
-//        settings.resultListener()?.let {
-//            optionsBuilder.setResultListener(it)
-//        }
+        settings.resultListener()?.let {
+            optionsBuilder.setResultListener(it)
+        }
+        settings.errorListener()?.let {
+            optionsBuilder.setErrorListener(it)
+        }
         return ImageClassifier.createFromOptions(context, optionsBuilder.build())
     }
 
@@ -431,9 +383,12 @@ open class VisionProviderBase(private val context: Context) {
             .setRunningMode(settings.runningMode())
             .setL2Normalize(settings.l2Normalize())
             .setQuantize(settings.quantize())
-//        settings.resultListener()?.let {
-//            optionsBuilder.setEmbedderListener(it)
-//        }
+        settings.resultListener()?.let {
+            optionsBuilder.setResultListener(it)
+        }
+        settings.errorListener()?.let {
+            optionsBuilder.setErrorListener(it)
+        }
         return ImageEmbedder.createFromOptions(context, optionsBuilder.build())
     }
 
@@ -451,9 +406,12 @@ open class VisionProviderBase(private val context: Context) {
             .setRunningMode(settings.runningMode())
             .setOutputConfidenceMasks(settings.outputConfidenceMasks())
             .setOutputCategoryMask(settings.outputCategoryMask())
-//        settings.resultListener()?.let {
-//            optionsBuilder.setResultListener(it)
-//        }
+        settings.resultListener()?.let {
+            optionsBuilder.setResultListener(it)
+        }
+        settings.errorListener()?.let {
+            optionsBuilder.setErrorListener(it)
+        }
         return ImageSegmenter.createFromOptions(context, optionsBuilder.build())
     }
 
@@ -470,7 +428,6 @@ open class VisionProviderBase(private val context: Context) {
             .setBaseOptions(baseOptions)
             .setOutputConfidenceMasks(settings.outputConfidenceMasks())
             .setOutputCategoryMask(settings.outputCategoryMask())
-
         settings.resultListener()?.let {
             optionsBuilder.setResultListener(it)
         }
@@ -497,9 +454,12 @@ open class VisionProviderBase(private val context: Context) {
             .setScoreThreshold(settings.scoreThreshold())
             .setCategoryAllowlist(settings.categoryAllowlist())
             .setCategoryDenylist(settings.categoryDenylist())
-//        settings.resultListener()?.let {
-//            optionsBuilder.setResultListener(it)
-//        }
+        settings.resultListener()?.let {
+            optionsBuilder.setResultListener(it)
+        }
+        settings.errorListener()?.let {
+            optionsBuilder.setErrorListener(it)
+        }
         return ObjectDetector.createFromOptions(context, optionsBuilder.build())
     }
 
@@ -520,58 +480,13 @@ open class VisionProviderBase(private val context: Context) {
             .setMinPosePresenceConfidence(settings.minPosePresenceConfidence())
             .setMinTrackingConfidence(settings.minTrackingConfidence())
             .setOutputSegmentationMasks(settings.outputSegmentationMasks())
-//        settings.resultListener()?.let {
-//            optionsBuilder.setResultListener(it)
-//        }
-        return PoseLandmarker.createFromOptions(context, optionsBuilder.build())
-    }
-
-    fun listAllAssets(context: Context): List<String> {
-        val assetManager = context.assets
-        val allAssets = mutableListOf<String>()
-
-        // A recursive helper function to traverse the asset tree
-        fun findAssets(path: String) {
-            try {
-                // List items at the current path
-                val items = assetManager.list(path)
-                if (items.isNullOrEmpty()) {
-                    // This path is likely a file or an empty directory, but we treat it as a file path
-                    // to be safe. An actual file will not be returned by list().
-                    // To be more robust, one could try to open it to see if it's a file.
-                    return
-                }
-
-                for (item in items) {
-                    // Construct the full path for the current item
-                    val fullPath = if (path.isEmpty()) item else "$path/$item"
-
-                    // Check if the item is a directory by trying to list its contents.
-                    // If list() returns a non-empty array, it's a directory.
-                    // If it returns an empty array, it's a file.
-                    // A small lookahead to see if it's a directory
-                    if (assetManager.list(fullPath)?.isNotEmpty() == true) {
-                        // It's a directory, recurse into it
-                        findAssets(fullPath)
-                    } else {
-                        // It's a file, add it to our list
-                        allAssets.add(fullPath)
-                    }
-                }
-            } catch (e: IOException) {
-                // This can happen if the path is a file, not a directory.
-                // When we try to list a file, it throws an IOException.
-                // We can add the path to our list in this case.
-                if (path.isNotEmpty()) {
-                    allAssets.add(path)
-                }
-            }
+        settings.resultListener()?.let {
+            optionsBuilder.setResultListener(it)
         }
-
-        // Start the search from the root directory
-        findAssets("")
-
-        return allAssets
+        settings.errorListener()?.let {
+            optionsBuilder.setErrorListener(it)
+        }
+        return PoseLandmarker.createFromOptions(context, optionsBuilder.build())
     }
 
     /**
