@@ -1,6 +1,11 @@
 package com.google.mediapipe.tasks.vision.provider
 
+import com.google.mediapipe.framework.image.MPImage
+import com.google.mediapipe.tasks.core.ErrorListener
+import com.google.mediapipe.tasks.core.OutputHandler
 import com.google.mediapipe.tasks.vision.core.RunningMode
+import com.google.mediapipe.tasks.vision.facedetector.FaceDetectorResult
+import com.google.mediapipe.tasks.vision.facelandmarker.FaceLandmarkerResult
 
 public class FaceLandmarkerSettingsInternal @JvmOverloads constructor(
     private val minFaceDetectionConfidence: Float = 0.5f,
@@ -9,7 +14,9 @@ public class FaceLandmarkerSettingsInternal @JvmOverloads constructor(
     private val numFaces: Int = 1,
     private val outputFaceBlendshapes: Boolean = VisionProviderBase.Companion.DEFAULT_OUTPUT_BLENDSHAPES,
     private val outputFacialTransformationMatrixes: Boolean = VisionProviderBase.Companion.DEFAULT_OUTPUT_FACIAL_TRANSFORMATION_MATRIXES,
-    private val runningMode: RunningMode = VisionProviderBase.Companion.DEFAULT_RUNNING_MODE
+    private val runningMode: RunningMode = VisionProviderBase.Companion.DEFAULT_RUNNING_MODE,
+    private val resultListener: OutputHandler.ResultListener<FaceLandmarkerResult, MPImage>? = null,
+    private val errorListener: ErrorListener? = null,
 ) {
     fun minFaceDetectionConfidence(): Float {
         return minFaceDetectionConfidence
@@ -37,5 +44,13 @@ public class FaceLandmarkerSettingsInternal @JvmOverloads constructor(
 
     fun runningMode(): RunningMode {
         return runningMode
+    }
+
+    fun resultListener(): OutputHandler.ResultListener<FaceLandmarkerResult, MPImage>? {
+        return resultListener
+    }
+
+    fun errorListener(): ErrorListener? {
+        return errorListener
     }
 }

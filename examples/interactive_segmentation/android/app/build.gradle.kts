@@ -1,5 +1,3 @@
-import com.google.mediapipe.tasks.vision.provider.GenerateVisionProviderTask
-
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -20,7 +18,9 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
-
+    aaptOptions {
+        noCompress.add("tflite")
+    }
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -37,7 +37,6 @@ android {
     buildFeatures {
         viewBinding = true
     }
-
     sourceSets {
         getByName("main") {
             java.srcDir("build/generated/source/buildInfo/kotlin")

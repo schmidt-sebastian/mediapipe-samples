@@ -52,7 +52,7 @@ abstract class VisionTask @Inject constructor(
         IMAGE_CLASSIFIER("task"),
         IMAGE_EMBEDDER("task"),
         IMAGE_SEGMENTER("task"),
-        INTERACTIVE_SEGMENTER("task"),
+        INTERACTIVE_SEGMENTER("tflite"),
         OBJECT_DETECTOR("task"),
         POSE_LANDMARKER("task");
 

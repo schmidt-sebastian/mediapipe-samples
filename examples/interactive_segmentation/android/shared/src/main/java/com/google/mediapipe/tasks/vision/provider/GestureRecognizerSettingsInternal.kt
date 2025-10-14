@@ -1,7 +1,12 @@
 package com.google.mediapipe.tasks.vision.provider
 
+import com.google.mediapipe.framework.image.MPImage
 import com.google.mediapipe.tasks.components.processors.ClassifierOptions
+import com.google.mediapipe.tasks.core.ErrorListener
+import com.google.mediapipe.tasks.core.OutputHandler
 import com.google.mediapipe.tasks.vision.core.RunningMode
+import com.google.mediapipe.tasks.vision.facelandmarker.FaceLandmarkerResult
+import com.google.mediapipe.tasks.vision.gesturerecognizer.GestureRecognizerResult
 
 public class GestureRecognizerSettingsInternal @JvmOverloads constructor(
     private val minHandDetectionConfidence: Float = 0.5f,
@@ -10,7 +15,9 @@ public class GestureRecognizerSettingsInternal @JvmOverloads constructor(
     private val numHands: Int = 1,
     private val cannedGesturesClassifierOptions: ClassifierOptions? = null,
     private val customGesturesClassifierOptions: ClassifierOptions? = null,
-    private val runningMode: RunningMode = VisionProviderBase.Companion.DEFAULT_RUNNING_MODE
+    private val runningMode: RunningMode = VisionProviderBase.Companion.DEFAULT_RUNNING_MODE,
+    private val resultListener: OutputHandler.ResultListener<GestureRecognizerResult, MPImage>? = null,
+    private val errorListener: ErrorListener? = null,
 ) {
     fun minHandDetectionConfidence(): Float {
         return minHandDetectionConfidence
@@ -38,5 +45,13 @@ public class GestureRecognizerSettingsInternal @JvmOverloads constructor(
 
     fun runningMode(): RunningMode {
         return runningMode
+    }
+
+    fun resultListener(): OutputHandler.ResultListener<GestureRecognizerResult, MPImage>? {
+        return resultListener
+    }
+
+    fun errorListener(): ErrorListener? {
+        return errorListener
     }
 }

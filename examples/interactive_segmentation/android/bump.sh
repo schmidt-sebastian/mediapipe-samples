@@ -10,6 +10,9 @@ ANDROID_PROJECT_DIR="/Users/mrschmidt/GitHub/schmidt-sebastian/mediapipe-samples
 PROVIDER_BUILD_FILE="$PROVIDER_DIR/build.gradle.kts"
 ANDROID_SETTINGS_FILE="$ANDROID_PROJECT_DIR/settings.gradle.kts"
 
+rm -rf build/
+rm -rf app/build/
+
 echo "🚀 Starting the version bump and build process..."
 
 # --- 1. Read and Bump Version in vision-provider ---
@@ -55,7 +58,13 @@ echo "✅ Provider module published locally."
 echo "📱 Building the Android application..."
 cd "$ANDROID_PROJECT_DIR"
 
-# Clean, and then assemble the debug build. This also performs a Gradle sync.
-./gradlew clean assembleDebug
+
+./gradlew clean
+
+./gradlew generateDebugSources
+
+./gradlew assembleDebug --stacktrace
+
+./gradlew :app:packageDebugBundle --stacktrace
 
 echo "🎉 Success! The project has been built with version $new_version."

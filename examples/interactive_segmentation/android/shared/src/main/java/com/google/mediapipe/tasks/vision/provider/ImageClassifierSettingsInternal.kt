@@ -1,6 +1,11 @@
 package com.google.mediapipe.tasks.vision.provider
 
+import com.google.mediapipe.framework.image.MPImage
+import com.google.mediapipe.tasks.core.ErrorListener
+import com.google.mediapipe.tasks.core.OutputHandler
 import com.google.mediapipe.tasks.vision.core.RunningMode
+import com.google.mediapipe.tasks.vision.facelandmarker.FaceLandmarkerResult
+import com.google.mediapipe.tasks.vision.imageclassifier.ImageClassifierResult
 
 public class ImageClassifierSettingsInternal @JvmOverloads constructor(
     private val displayNamesLocale: String? = VisionProviderBase.Companion.DEFAULT_DISPLAY_NAMES_LOCALE,
@@ -8,7 +13,9 @@ public class ImageClassifierSettingsInternal @JvmOverloads constructor(
     private val scoreThreshold: Float = 0.0f,
     private val categoryAllowlist: List<String>? = null,
     private val categoryDenylist: List<String>? = null,
-    private val runningMode: RunningMode = VisionProviderBase.Companion.DEFAULT_RUNNING_MODE
+    private val runningMode: RunningMode = VisionProviderBase.Companion.DEFAULT_RUNNING_MODE,
+    private val resultListener: OutputHandler.ResultListener<ImageClassifierResult, MPImage>? = null,
+    private val errorListener: ErrorListener? = null,
 ) {
     fun displayNamesLocale(): String? {
         return displayNamesLocale
@@ -32,5 +39,13 @@ public class ImageClassifierSettingsInternal @JvmOverloads constructor(
 
     fun runningMode(): RunningMode {
         return runningMode
+    }
+
+    fun resultListener(): OutputHandler.ResultListener<ImageClassifierResult, MPImage>? {
+        return resultListener
+    }
+
+    fun errorListener(): ErrorListener? {
+        return errorListener
     }
 }

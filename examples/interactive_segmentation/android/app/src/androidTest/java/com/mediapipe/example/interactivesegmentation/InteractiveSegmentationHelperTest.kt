@@ -64,7 +64,7 @@ class InteractiveSegmentationHelperTest {
                 ApplicationProvider.getApplicationContext(),
                 object :
                     InteractiveSegmentationHelper.InteractiveSegmentationListener {
-                    override fun onError(error: String) {
+                    override fun onError(error: String?) {
                         // no-op
                         countDownLatch.countDown()
                     }

@@ -2,6 +2,8 @@ package com.google.mediapipe.tasks.vision.provider
 
 import android.app.Activity
 import android.content.Context
+import android.content.res.AssetFileDescriptor
+import android.content.res.AssetManager
 import android.util.Log
 import com.google.android.play.core.aipacks.AiPackManager
 import com.google.android.play.core.aipacks.AiPackManagerFactory
@@ -32,10 +34,16 @@ import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import java.util.zip.ZipFile
 import android.os.Build.SOC_MODEL
+import com.google.android.play.core.aipacks.AiPackLocation
+import java.io.FileInputStream
+import java.nio.channels.FileChannel
+import java.security.MessageDigest
+import java.security.NoSuchAlgorithmException
 
 
 open class VisionProviderBase(private val context: Context) {
-    private var aiPackManager: AiPackManager = AiPackManagerFactory.getInstance(context.applicationContext)
+    private var aiPackManager: AiPackManager =
+        AiPackManagerFactory.getInstance(context.applicationContext)
     private var soc: String?
 
     // A thread-safe map to store listeners for each model.
@@ -116,22 +124,22 @@ open class VisionProviderBase(private val context: Context) {
 
     fun getHexagonVersionForSoC(socIdentifier: String): String? {
         return when {
-            // Snapdragon 8 Gen 3
-            socIdentifier.contains("SM8650", ignoreCase = true) -> "v75"
-
-            // Snapdragon 8 Gen 2
-            socIdentifier.contains("SM8550", ignoreCase = true) -> "v73"
-
-            // Snapdragon 8 Gen 1 / 8+ Gen 1
-            socIdentifier.contains("SM8450", ignoreCase = true) ||
-                    socIdentifier.contains("SM8475", ignoreCase = true) -> "v69"
-
-            // Snapdragon 7 series
-            socIdentifier.contains("SM7325", ignoreCase = true) -> "v69" // Snapdragon 778G
-            socIdentifier.contains("SM7450", ignoreCase = true) -> "v69" // Snapdragon 7 Gen 1
-
-            // Snapdragon 888 / 888+
-            socIdentifier.contains("SM8350", ignoreCase = true) -> "v68"
+//            // Snapdragon 8 Gen 3
+//            socIdentifier.contains("SM8650", ignoreCase = true) -> "v75"
+//
+//            // Snapdragon 8 Gen 2
+//            socIdentifier.contains("SM8550", ignoreCase = true) -> "v73"
+//
+//            // Snapdragon 8 Gen 1 / 8+ Gen 1
+//            socIdentifier.contains("SM8450", ignoreCase = true) ||
+//                    socIdentifier.contains("SM8475", ignoreCase = true) -> "v69"
+//
+//            // Snapdragon 7 series
+//            socIdentifier.contains("SM7325", ignoreCase = true) -> "v69" // Snapdragon 778G
+//            socIdentifier.contains("SM7450", ignoreCase = true) -> "v69" // Snapdragon 7 Gen 1
+//
+//            // Snapdragon 888 / 888+
+//            socIdentifier.contains("SM8350", ignoreCase = true) -> "v68"
 
             else -> return null// Return null if the SoC is not in our list
         }
@@ -198,15 +206,10 @@ open class VisionProviderBase(private val context: Context) {
     }
 
     private fun getAbsoluteAiAssetPath(
-        context: Context,
-        aiPack: String,
+        packLocation: AiPackLocation,
         relativeAiAssetPath: String
     ): String {
-        val aiPackLocation = aiPackManager.getPackLocation(aiPack)
-            ?: throw RuntimeException("AI pack not found or ready: $aiPack")
-
-        return getAssetPathFromSplits(context, relativeAiAssetPath)
-            ?: throw RuntimeException("Asset '$relativeAiAssetPath' not found in pack '$aiPack' or any other split.")
+        return "${packLocation.assetsPath()}/$relativeAiAssetPath"
     }
 
     /**
@@ -264,11 +267,34 @@ open class VisionProviderBase(private val context: Context) {
      * Generic helper to create a BaseOptions builder with a model path and an optional NPU delegate.
      */
     private fun createBaseOptions(
-        modelAssetPath: String,
+        modelAssetPath: String?,
+        assetFd: AssetFileDescriptor?,
         dispatchLibraryPath: String?
     ): BaseOptions.Builder {
         val baseOptionsBuilder = BaseOptions.builder()
-            .setModelAssetPath(modelAssetPath)
+
+        if (modelAssetPath != null) {
+            baseOptionsBuilder.setModelAssetPath(modelAssetPath)
+        } else if (assetFd != null) {
+            try {
+                // Use Kotlin's 'use' block to automatically close the FileInputStream
+                FileInputStream(assetFd.fileDescriptor).use { inputStream ->
+                    // Memory-map the file channel to get a direct ByteBuffer
+                    val modelBuffer = inputStream.channel.map(
+                        FileChannel.MapMode.READ_ONLY,
+                        assetFd.startOffset,
+                        assetFd.declaredLength
+                    )
+                    // Set the model asset buffer
+                    baseOptionsBuilder.setModelAssetBuffer(modelBuffer)
+                }
+            } catch (e: IOException) {
+                // Log an error if the model cannot be loaded
+                Log.e("MediaPipeSetup", "Failed to load model from AssetFileDescriptor.", e)
+                // Depending on your use case, you might want to re-throw this as a
+                // runtime exception to halt initialization.
+            }
+        }
 
         // Apply the NPU delegate if a dispatch library path is available
         if (dispatchLibraryPath != null) {
@@ -280,32 +306,35 @@ open class VisionProviderBase(private val context: Context) {
         return baseOptionsBuilder
     }
 
-
     private fun createFaceDetectorFromPath(
         context: Context,
-        modelAssetPath: String,
+        modelAssetPath: String?,
+        modelAssetFd: AssetFileDescriptor?,
         dispatchLibraryPath: String?,
         settings: FaceDetectorSettingsInternal
     ): FaceDetector {
-        val baseOptions = createBaseOptions(modelAssetPath, dispatchLibraryPath).build()
+        val baseOptions =
+            createBaseOptions(modelAssetPath, modelAssetFd, dispatchLibraryPath).build()
         val optionsBuilder = FaceDetector.FaceDetectorOptions.builder()
             .setBaseOptions(baseOptions)
             .setRunningMode(settings.runningMode())
             .setMinDetectionConfidence(settings.minDetectionConfidence())
             .setMinSuppressionThreshold(settings.minSuppressionThreshold())
-        settings.resultListener()?.let {
-            optionsBuilder.setResultListener(it)
-        }
+//        settings.resultListener()?.let {
+//            optionsBuilder.setResultListener(it)
+//        }
         return FaceDetector.createFromOptions(context, optionsBuilder.build())
     }
 
     private fun createFaceLandmarkerFromPath(
         context: Context,
-        modelAssetPath: String,
+        modelAssetPath: String?,
+        modelAssetFd: AssetFileDescriptor?,
         dispatchLibraryPath: String?,
         settings: FaceLandmarkerSettingsInternal
     ): FaceLandmarker {
-        val baseOptions = createBaseOptions(modelAssetPath, dispatchLibraryPath).build()
+        val baseOptions =
+            createBaseOptions(modelAssetPath, modelAssetFd, dispatchLibraryPath).build()
         val optionsBuilder = FaceLandmarker.FaceLandmarkerOptions.builder()
             .setBaseOptions(baseOptions)
             .setRunningMode(settings.runningMode())
@@ -323,11 +352,13 @@ open class VisionProviderBase(private val context: Context) {
 
     private fun createGestureRecognizerFromPath(
         context: Context,
-        modelAssetPath: String,
+        modelAssetPath: String?,
+        modelAssetFd: AssetFileDescriptor?,
         dispatchLibraryPath: String?,
         settings: GestureRecognizerSettingsInternal
     ): GestureRecognizer {
-        val baseOptions = createBaseOptions(modelAssetPath, dispatchLibraryPath).build()
+        val baseOptions =
+            createBaseOptions(modelAssetPath, modelAssetFd, dispatchLibraryPath).build()
         val optionsBuilder = GestureRecognizer.GestureRecognizerOptions.builder()
             .setBaseOptions(baseOptions)
             .setRunningMode(settings.runningMode())
@@ -343,11 +374,13 @@ open class VisionProviderBase(private val context: Context) {
 
     private fun createHandLandmarkerFromPath(
         context: Context,
-        modelAssetPath: String,
+        modelAssetPath: String?,
+        modelAssetFd: AssetFileDescriptor?,
         dispatchLibraryPath: String?,
         settings: HandLandmarkerSettingsInternal
     ): HandLandmarker {
-        val baseOptions = createBaseOptions(modelAssetPath, dispatchLibraryPath).build()
+        val baseOptions =
+            createBaseOptions(modelAssetPath, modelAssetFd, dispatchLibraryPath).build()
         val optionsBuilder = HandLandmarker.HandLandmarkerOptions.builder()
             .setBaseOptions(baseOptions)
             .setRunningMode(settings.runningMode())
@@ -363,11 +396,13 @@ open class VisionProviderBase(private val context: Context) {
 
     private fun createImageClassifierFromPath(
         context: Context,
-        modelAssetPath: String,
+        modelAssetPath: String?,
+        modelAssetFd: AssetFileDescriptor?,
         dispatchLibraryPath: String?,
         settings: ImageClassifierSettingsInternal
     ): ImageClassifier {
-        val baseOptions = createBaseOptions(modelAssetPath, dispatchLibraryPath).build()
+        val baseOptions =
+            createBaseOptions(modelAssetPath, modelAssetFd, dispatchLibraryPath).build()
         val optionsBuilder = ImageClassifier.ImageClassifierOptions.builder()
             .setBaseOptions(baseOptions)
             .setRunningMode(settings.runningMode())
@@ -384,11 +419,13 @@ open class VisionProviderBase(private val context: Context) {
 
     private fun createImageEmbedderFromPath(
         context: Context,
-        modelAssetPath: String,
+        modelAssetPath: String?,
+        modelAssetFd: AssetFileDescriptor?,
         dispatchLibraryPath: String?,
         settings: ImageEmbedderSettingsInternal
     ): ImageEmbedder {
-        val baseOptions = createBaseOptions(modelAssetPath, dispatchLibraryPath).build()
+        val baseOptions =
+            createBaseOptions(modelAssetPath, modelAssetFd, dispatchLibraryPath).build()
         val optionsBuilder = ImageEmbedder.ImageEmbedderOptions.builder()
             .setBaseOptions(baseOptions)
             .setRunningMode(settings.runningMode())
@@ -402,11 +439,13 @@ open class VisionProviderBase(private val context: Context) {
 
     private fun createImageSegmenterFromPath(
         context: Context,
-        modelAssetPath: String,
+        modelAssetPath: String?,
+        modelAssetFd: AssetFileDescriptor?,
         dispatchLibraryPath: String?,
         settings: ImageSegmenterSettingsInternal
     ): ImageSegmenter {
-        val baseOptions = createBaseOptions(modelAssetPath, dispatchLibraryPath).build()
+        val baseOptions =
+            createBaseOptions(modelAssetPath, modelAssetFd, dispatchLibraryPath).build()
         val optionsBuilder = ImageSegmenter.ImageSegmenterOptions.builder()
             .setBaseOptions(baseOptions)
             .setRunningMode(settings.runningMode())
@@ -420,25 +459,36 @@ open class VisionProviderBase(private val context: Context) {
 
     private fun createInteractiveSegmenterFromPath(
         context: Context,
-        modelAssetPath: String,
+        modelAssetPath: String?,
+        modelAssetFd: AssetFileDescriptor?,
         dispatchLibraryPath: String?,
         settings: InteractiveSegmenterSettingsInternal
     ): InteractiveSegmenter {
-        val baseOptions = createBaseOptions(modelAssetPath, dispatchLibraryPath).build()
+        val baseOptions =
+            createBaseOptions(modelAssetPath, modelAssetFd, dispatchLibraryPath).build()
         val optionsBuilder = InteractiveSegmenter.InteractiveSegmenterOptions.builder()
             .setBaseOptions(baseOptions)
             .setOutputConfidenceMasks(settings.outputConfidenceMasks())
             .setOutputCategoryMask(settings.outputCategoryMask())
+
+        settings.resultListener()?.let {
+            optionsBuilder.setResultListener(it)
+        }
+        settings.errorListener()?.let {
+            optionsBuilder.setErrorListener(it)
+        }
         return InteractiveSegmenter.createFromOptions(context, optionsBuilder.build())
     }
 
     private fun createObjectDetectorFromPath(
         context: Context,
-        modelAssetPath: String,
+        modelAssetPath: String?,
+        modelAssetFd: AssetFileDescriptor?,
         dispatchLibraryPath: String?,
         settings: ObjectDetectorSettingsInternal
     ): ObjectDetector {
-        val baseOptions = createBaseOptions(modelAssetPath, dispatchLibraryPath).build()
+        val baseOptions =
+            createBaseOptions(modelAssetPath, modelAssetFd, dispatchLibraryPath).build()
         val optionsBuilder = ObjectDetector.ObjectDetectorOptions.builder()
             .setBaseOptions(baseOptions)
             .setRunningMode(settings.runningMode())
@@ -455,11 +505,13 @@ open class VisionProviderBase(private val context: Context) {
 
     private fun createPoseLandmarkerFromPath(
         context: Context,
-        modelAssetPath: String,
+        modelAssetPath: String?,
+        modelAssetFd: AssetFileDescriptor?,
         dispatchLibraryPath: String?,
         settings: PoseLandmarkerSettingsInternal
     ): PoseLandmarker {
-        val baseOptions = createBaseOptions(modelAssetPath, dispatchLibraryPath).build()
+        val baseOptions =
+            createBaseOptions(modelAssetPath, modelAssetFd, dispatchLibraryPath).build()
         val optionsBuilder = PoseLandmarker.PoseLandmarkerOptions.builder()
             .setBaseOptions(baseOptions)
             .setRunningMode(settings.runningMode())
@@ -474,6 +526,53 @@ open class VisionProviderBase(private val context: Context) {
         return PoseLandmarker.createFromOptions(context, optionsBuilder.build())
     }
 
+    fun listAllAssets(context: Context): List<String> {
+        val assetManager = context.assets
+        val allAssets = mutableListOf<String>()
+
+        // A recursive helper function to traverse the asset tree
+        fun findAssets(path: String) {
+            try {
+                // List items at the current path
+                val items = assetManager.list(path)
+                if (items.isNullOrEmpty()) {
+                    // This path is likely a file or an empty directory, but we treat it as a file path
+                    // to be safe. An actual file will not be returned by list().
+                    // To be more robust, one could try to open it to see if it's a file.
+                    return
+                }
+
+                for (item in items) {
+                    // Construct the full path for the current item
+                    val fullPath = if (path.isEmpty()) item else "$path/$item"
+
+                    // Check if the item is a directory by trying to list its contents.
+                    // If list() returns a non-empty array, it's a directory.
+                    // If it returns an empty array, it's a file.
+                    // A small lookahead to see if it's a directory
+                    if (assetManager.list(fullPath)?.isNotEmpty() == true) {
+                        // It's a directory, recurse into it
+                        findAssets(fullPath)
+                    } else {
+                        // It's a file, add it to our list
+                        allAssets.add(fullPath)
+                    }
+                }
+            } catch (e: IOException) {
+                // This can happen if the path is a file, not a directory.
+                // When we try to list a file, it throws an IOException.
+                // We can add the path to our list in this case.
+                if (path.isNotEmpty()) {
+                    allAssets.add(path)
+                }
+            }
+        }
+
+        // Start the search from the root directory
+        findAssets("")
+
+        return allAssets
+    }
 
     /**
      * Generic function to create any MediaPipe Vision task.
@@ -482,7 +581,7 @@ open class VisionProviderBase(private val context: Context) {
     private fun <T, S> createTask(
         model: VisionModel,
         settings: S,
-        creator: (Context, String, String?, S) -> T
+        creator: (Context, String?, AssetFileDescriptor?, String?, S) -> T
     ): Future<T> {
         val future = CompletableFuture<T>()
 
@@ -494,21 +593,45 @@ open class VisionProviderBase(private val context: Context) {
             }
 
             val packName = "aipack_" + model.enumName
-
-            if (aiPackManager.getPackLocation(packName) != null) {
-                Log.d("VisionProvider", "AI Pack '$packName' is already installed. Creating task.")
-                val modelPath = getAbsoluteAiAssetPath(context, packName, model.createModelFileName())
-                Executors.newSingleThreadExecutor().submit {
-                    try {
-                        val task = creator(context, modelPath, dispatchLibraryPath, settings)
-                        future.complete(task)
-                    } catch (e: Exception) {
-                        future.completeExceptionally(e)
+            try {
+                val packLocation = aiPackManager.getPackLocation(packName)
+                if (packLocation != null) {
+                    Log.d(
+                        "VisionProvider",
+                        "AI Pack '$packName' is already installed. Creating task."
+                    )
+                    val filename = model.createModelFileName()
+                    Executors.newSingleThreadExecutor().submit {
+                        try {
+                            if (packLocation.assetsPath() != null) {
+                                val modelPath =
+                                    getAbsoluteAiAssetPath(packLocation, filename)
+                                val task =
+                                    creator(context, modelPath, null, dispatchLibraryPath, settings)
+                                future.complete(task)
+                            } else {
+                                val fd = context.assets.openFd("model/" + filename)
+                                val task =
+                                    creator(context, null, fd, dispatchLibraryPath, settings)
+                                future.complete(task)
+                            }
+                        } catch (e: Exception) {
+                            future.completeExceptionally(e)
+                        }
                     }
+                } else {
+                    Log.d("VisionProvider", "AI Pack '$packName' not found. Starting download.")
+                    initiateAIPackDownloadForTask(
+                        future,
+                        packName,
+                        model,
+                        dispatchLibraryPath,
+                        settings,
+                        creator
+                    )
                 }
-            } else {
-                Log.d("VisionProvider", "AI Pack '$packName' not found. Starting download.")
-                initiateAIPackDownloadForTask(future, packName, model, dispatchLibraryPath, settings, creator)
+            } catch (e: Exception) {
+                future.completeExceptionally(e)
             }
         }
         return future
@@ -523,7 +646,7 @@ open class VisionProviderBase(private val context: Context) {
         model: VisionModel,
         dispatchLibraryPath: String?,
         settings: S,
-        creator: (Context, String, String?, S) -> T
+        creator: (Context, String?, AssetFileDescriptor?, String?, S) -> T
     ) {
         val downloader = AIPackDownloader(context)
         downloader.setListener(object : AIPackDownloader.DownloadListener {
@@ -532,11 +655,32 @@ open class VisionProviderBase(private val context: Context) {
                     is DownloadStatus.Completed -> {
                         Log.d("VisionProvider", "AI Pack '$packName' downloaded. Creating task.")
                         notifyModelListeners(model) { it.onCompleted() }
-                        val modelPath = getAbsoluteAiAssetPath(context, packName, model.createModelFileName())
+                        val packLocation = aiPackManager.getPackLocation(packName)
+
                         Executors.newSingleThreadExecutor().submit {
                             try {
-                                val task = creator(context, modelPath, dispatchLibraryPath, settings)
-                                future.complete(task)
+                                if (packLocation == null || packLocation.assetsPath() == null) {
+                                    val fd = context.assets.openFd(model.createModelFileName())
+                                    val task =
+                                        creator(context, null, fd, dispatchLibraryPath, settings)
+                                    future.complete(task)
+                                } else {
+                                    val modelPath =
+                                        getAbsoluteAiAssetPath(
+                                            packLocation,
+                                            model.createModelFileName()
+                                        )
+                                    val task =
+                                        creator(
+                                            context,
+                                            modelPath,
+                                            null,
+                                            dispatchLibraryPath,
+                                            settings
+                                        )
+                                    future.complete(task)
+                                }
+
                             } catch (e: Exception) {
                                 future.completeExceptionally(e)
                             } finally {
@@ -544,23 +688,29 @@ open class VisionProviderBase(private val context: Context) {
                             }
                         }
                     }
+
                     is DownloadStatus.Failed -> {
-                        val error = RuntimeException("Failed to download AI Pack '$packName' with error: ${status.errorCode}")
+                        val error =
+                            RuntimeException("Failed to download AI Pack '$packName' with error: ${status.errorCode}")
                         Log.e("VisionProvider", error.message!!)
                         notifyModelListeners(model) { it.onFailed(error) }
                         future.completeExceptionally(error)
                         downloader.removeListener()
                     }
+
                     is DownloadStatus.Downloading -> {
                         Log.i("VisionProvider", "Downloading '$packName': ${status.progress}%")
                         notifyModelListeners(model) { it.onProgress(status.progress) }
                     }
-                    is DownloadStatus.Idle -> { /* Idle state, no action needed. */ }
+
+                    is DownloadStatus.Idle -> { /* Idle state, no action needed. */
+                    }
                 }
             }
 
             override fun onShowConfirmationDialog(activity: Activity, status: AssetPackState) {
-                val error = IllegalStateException("User confirmation required for '$packName'. The UI must handle this.")
+                val error =
+                    IllegalStateException("User confirmation required for '$packName'. The UI must handle this.")
                 Log.w("VisionProvider", error.message!!)
                 notifyModelListeners(model) { it.onFailed(error) }
                 future.completeExceptionally(error)
@@ -602,7 +752,8 @@ open class VisionProviderBase(private val context: Context) {
 
     fun createInteractiveSegmenterImpl(
         model: VisionModel, settings: InteractiveSegmenterSettingsInternal
-    ): Future<InteractiveSegmenter> = createTask(model, settings, ::createInteractiveSegmenterFromPath)
+    ): Future<InteractiveSegmenter> =
+        createTask(model, settings, ::createInteractiveSegmenterFromPath)
 
     fun createObjectDetectorImpl(
         model: VisionModel, settings: ObjectDetectorSettingsInternal
@@ -625,7 +776,7 @@ open class VisionProviderBase(private val context: Context) {
         const val DEFAULT_L2_NORMALIZE: Boolean = false
         const val DEFAULT_QUANTIZE: Boolean = false
         const val DEFAULT_OUTPUT_CONFIDENCE_MASKS: Boolean = false
-        const val DEFAULT_OUTPUT_CATEGORY_MASK: Boolean = false
+        const val DEFAULT_OUTPUT_CATEGORY_MASK: Boolean = true
         const val DEFAULT_OUTPUT_SEGMENTATION_MASKS: Boolean = false
     }
 }

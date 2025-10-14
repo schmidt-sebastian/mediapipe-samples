@@ -137,7 +137,7 @@ class MainActivity : AppCompatActivity(), InteractiveSegmentationHelper.Interact
         activityMainBinding.imgSegmentation.setOnTouchListener { v, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    if (interactiveSegmentationHelper.isInputImageAssigned()) {
+                    if (interactiveSegmentationHelper.isInputImageAssigned) {
                         val touchX = event.x.toInt()
                         val touchY = event.y.toInt()
 
@@ -243,8 +243,8 @@ class MainActivity : AppCompatActivity(), InteractiveSegmentationHelper.Interact
         }
     }
 
-    override fun onError(error: String) {
-        showError(error)
+    override fun onError(error: String?) {
+        TODO("Not yet implemented " + error)
     }
 
     override fun onResults(result: InteractiveSegmentationHelper.ResultBundle?) {
@@ -252,7 +252,7 @@ class MainActivity : AppCompatActivity(), InteractiveSegmentationHelper.Interact
         // from the helper
         result?.let {
             activityMainBinding.overlapView.setMaskResult(
-                it.byteBuffer,
+                it.byteBuffer!!,
                 it.maskWidth,
                 it.maskHeight
             )
