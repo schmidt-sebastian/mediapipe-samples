@@ -16,6 +16,7 @@
 -->
 <resources>
     <string name="app_name">Interactive Segmentation</string>
+    <string name="title_qnn_wrapper">QNN Support</string>
     <string name="show_image">Show Image</string>
     <string name="tv_screen_description">Take a picture or pick from gallery</string>
     <string name="tv_add_image">Add Image</string>

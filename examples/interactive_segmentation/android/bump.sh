@@ -59,9 +59,9 @@ echo "📱 Building the Android application..."
 cd "$ANDROID_PROJECT_DIR"
 
 
-./gradlew clean
+./gradlew clean --stacktrace
 
-./gradlew generateDebugSources
+./gradlew generateDebugSources --stacktrace
 
 ./gradlew assembleDebug --stacktrace
 
