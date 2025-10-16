@@ -21,7 +21,7 @@ buildscript {
         mavenLocal()
     }
     dependencies {
-        classpath("com.google.mediapipe.tasks.vision.provider:com.google.mediapipe.tasks.vision.provider.gradle.plugin:1.0.120")
+        classpath("com.google.mediapipe.tasks.vision.provider:com.google.mediapipe.tasks.vision.provider.gradle.plugin:1.0.151")
     }
 }
 

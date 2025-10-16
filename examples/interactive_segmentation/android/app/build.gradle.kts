@@ -44,6 +44,11 @@ android {
             kotlin.srcDir(layout.buildDirectory.dir("generated/source/main/kotlin"))
         }
     }
+    bundle {
+        abi {
+            enableSplit = true
+        }
+    }
 }
 
 

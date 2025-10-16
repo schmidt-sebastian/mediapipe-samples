@@ -33,7 +33,7 @@ class QnnWrapperPlugin : Plugin<Project> {
                 minSdk = 33
             }
             // Add the Qualcomm QNN runtime dependency from Maven Central.
-            project.dependencies.add("implementation", "com.qualcomm.qti:qnn-runtime:2.16.0.240129@aar")
+            project.dependencies.add("implementation", "com.qualcomm.qti:qnn-runtime:2.39.0@aar")
         }
     }
 
@@ -74,7 +74,7 @@ class QnnWrapperPlugin : Plugin<Project> {
             doFirst {
                 try {
                     // Create a detached configuration to resolve the QNN runtime AAR specifically for this task.
-                    val qnnDependency = project.dependencies.create("com.qualcomm.qti:qnn-runtime:2.16.0.240129@aar")
+                    val qnnDependency = project.dependencies.create("com.qualcomm.qti:qnn-runtime:2.39.0@aar")
                     val qnnConfiguration = project.configurations.detachedConfiguration(
                         qnnDependency
                     );
