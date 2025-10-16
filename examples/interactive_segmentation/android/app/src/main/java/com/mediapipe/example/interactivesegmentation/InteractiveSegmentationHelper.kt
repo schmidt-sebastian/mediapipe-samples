@@ -127,9 +127,7 @@ class InteractiveSegmentationHelper(
             return
         }
 
-        // According to the MediaPipe documentation, the segmenter must be created for each session.
-        clear()
-        setupInteractiveSegmenter()
+
 
         if (interactiveSegmenter == null) {
             return

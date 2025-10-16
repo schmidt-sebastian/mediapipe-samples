@@ -59,7 +59,7 @@ open class VisionProviderBase(private val context: Context) {
         if (soc == null) {
             return CompletableFuture.completedFuture(null)
         }
-        val moduleName = "npu-module-$soc"
+        val moduleName = "qnn_$soc"
 
         val future = CompletableFuture<String?>()
         val splitInstallManager: SplitInstallManager = SplitInstallManagerFactory.create(context)
@@ -120,22 +120,22 @@ open class VisionProviderBase(private val context: Context) {
 
     fun getHexagonVersionForSoC(socIdentifier: String): String? {
         return when {
-//            // Snapdragon 8 Gen 3
-//            socIdentifier.contains("SM8650", ignoreCase = true) -> "v75"
-//
-//            // Snapdragon 8 Gen 2
-//            socIdentifier.contains("SM8550", ignoreCase = true) -> "v73"
-//
-//            // Snapdragon 8 Gen 1 / 8+ Gen 1
-//            socIdentifier.contains("SM8450", ignoreCase = true) ||
-//                    socIdentifier.contains("SM8475", ignoreCase = true) -> "v69"
-//
-//            // Snapdragon 7 series
-//            socIdentifier.contains("SM7325", ignoreCase = true) -> "v69" // Snapdragon 778G
-//            socIdentifier.contains("SM7450", ignoreCase = true) -> "v69" // Snapdragon 7 Gen 1
-//
-//            // Snapdragon 888 / 888+
-//            socIdentifier.contains("SM8350", ignoreCase = true) -> "v68"
+            // Snapdragon 8 Gen 3
+            socIdentifier.contains("SM8650", ignoreCase = true) -> "v75"
+
+            // Snapdragon 8 Gen 2
+            socIdentifier.contains("SM8550", ignoreCase = true) -> "v73"
+
+            // Snapdragon 8 Gen 1 / 8+ Gen 1
+            socIdentifier.contains("SM8450", ignoreCase = true) ||
+                    socIdentifier.contains("SM8475", ignoreCase = true) -> "v69"
+
+            // Snapdragon 7 series
+            socIdentifier.contains("SM7325", ignoreCase = true) -> "v69" // Snapdragon 778G
+            socIdentifier.contains("SM7450", ignoreCase = true) -> "v69" // Snapdragon 7 Gen 1
+
+            // Snapdragon 888 / 888+
+            socIdentifier.contains("SM8350", ignoreCase = true) -> "v68"
 
             else -> return null// Return null if the SoC is not in our list
         }
