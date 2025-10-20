@@ -1,4 +1,6 @@
 {
+    "compileSdk": 36,
+    "minSdk": 33,
     "tasks": {
         "InteractiveSegmenter": {
             "defaultModel": "magic_touch_v1_fp32",

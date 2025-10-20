@@ -13,6 +13,7 @@ import com.google.android.play.core.splitinstall.SplitInstallManager
 import com.google.android.play.core.splitinstall.SplitInstallManagerFactory
 import com.google.android.play.core.splitinstall.SplitInstallRequest
 import com.google.android.play.core.splitinstall.SplitInstallStateUpdatedListener
+import com.google.android.play.core.splitinstall.model.SplitInstallErrorCode
 import com.google.android.play.core.splitinstall.model.SplitInstallSessionStatus
 import com.google.mediapipe.tasks.core.BaseOptions
 import com.google.mediapipe.tasks.core.Delegate
@@ -40,105 +41,102 @@ import java.util.concurrent.Future
 open class VisionProviderBase(private val context: Context) {
     private var aiPackManager: AiPackManager =
         AiPackManagerFactory.getInstance(context.applicationContext)
-    private var soc: String?
 
     // A thread-safe map to store listeners for each model.
     private val DownloadListeners = mutableMapOf<VisionModel, MutableList<DownloadListener>>()
 
-    init {
-        soc = getHexagonVersionForSoC(SOC_MODEL)
-    }
 
     /**
-     * Downloads a Play Feature Delivery module if it's not already installed.
+     * Downloads the first available NPU Play Feature Delivery module from a prioritized list.
      *
-     * @param moduleName The name of the feature module to download.
-     * @return A CompletableFuture that completes when the module is installed or fails.
+     * This function iterates through a list of candidate modules (e.g., different NPU library versions)
+     * and attempts to install them one by one. It stops as soon as one is successfully installed
+     * or gracefully fails if none are compatible with the device.
+     *
+     * @param context The application context.
+     * @return A CompletableFuture that completes with the native library path if a module is installed,
+     * or null if no compatible module is found or an error occurs.
      */
-    private fun downloadNpuModuleIfNeeded(soc: String?): CompletableFuture<String?> {
-        if (soc == null) {
-            return CompletableFuture.completedFuture(null)
-        }
-        val moduleName = "qnn_$soc"
-
+    private fun downloadNpuModuleIfNeeded(): CompletableFuture<String?> {
         val future = CompletableFuture<String?>()
         val splitInstallManager: SplitInstallManager = SplitInstallManagerFactory.create(context)
 
-        if (splitInstallManager.installedModules.contains(moduleName)) {
-            Log.d("VisionProvider", "NPU module '$moduleName' is already installed.")
-            // The correct way to get the path to native libraries.
-            val nativeLibraryDir = context.applicationInfo.nativeLibraryDir
-            Log.d("VisionProvider", "Native library directory: $nativeLibraryDir")
-            future.complete(nativeLibraryDir)
+        // Prioritized list of modules to try, from newest/most preferred to oldest.
+        val moduleCandidates = listOf("qnn_v79", "qnn_v75", "qnn_v73", "qnn_v69", "qnn_v68")
+
+        // 1. Check if any of the candidate modules are already installed.
+        val installedModule = moduleCandidates.firstOrNull { splitInstallManager.installedModules.contains(it) }
+        if (installedModule != null) {
+            Log.d("VisionProvider", "NPU module '$installedModule' is already installed.")
+            future.complete(context.applicationInfo.nativeLibraryDir)
             return future
         }
 
-
-        Log.d("VisionProvider", "Requesting download for NPU module: '$moduleName'")
-        val request = SplitInstallRequest.newBuilder().addModule(moduleName).build()
-
-        val listener = SplitInstallStateUpdatedListener { state ->
-            when (state.status()) {
-                SplitInstallSessionStatus.INSTALLED -> {
-                    Log.d("VisionProvider", "NPU module '$moduleName' installed successfully.")
-                    // Get the path to the dispatch library from the installed module.
-                    val nativeLibraryDir = context.applicationInfo.nativeLibraryDir
-                    Log.d("VisionProvider", "NPU module path: $nativeLibraryDir")
-                    future.complete(nativeLibraryDir)
-                }
-
-                SplitInstallSessionStatus.FAILED -> {
-                    val errorMessage =
-                        "Failed to download NPU module '$moduleName' with error code: ${state.errorCode()}"
-                    Log.e("VisionProvider", errorMessage)
-                    future.complete(null)
-                }
-
-                SplitInstallSessionStatus.DOWNLOADING -> {
-                    val progress =
-                        (state.bytesDownloaded() * 100 / state.totalBytesToDownload()).toInt()
-                    Log.i("VisionProvider", "Downloading '$moduleName': $progress%")
-                }
-
-                else -> {
-                    // Log other states for debugging if necessary
-                    Log.d("VisionProvider", "NPU module download status: ${state.status()}")
-                }
-            }
-        }
-
-        splitInstallManager.registerListener(listener)
-        splitInstallManager.startInstall(request).addOnFailureListener { e ->
-            future.completeExceptionally(e)
-        }
-
-        // Clean up the listener once the operation is complete
-        future.whenComplete { _, _ -> splitInstallManager.unregisterListener(listener) }
+        // 2. If not installed, start trying to download them one by one.
+        tryInstallNextModule(context, splitInstallManager, moduleCandidates, future)
 
         return future
     }
 
-    fun getHexagonVersionForSoC(socIdentifier: String): String? {
-        return when {
-            // Snapdragon 8 Gen 3
-            socIdentifier.contains("SM8650", ignoreCase = true) -> "v75"
-
-            // Snapdragon 8 Gen 2
-            socIdentifier.contains("SM8550", ignoreCase = true) -> "v73"
-
-            // Snapdragon 8 Gen 1 / 8+ Gen 1
-            socIdentifier.contains("SM8450", ignoreCase = true) ||
-                    socIdentifier.contains("SM8475", ignoreCase = true) -> "v69"
-
-            // Snapdragon 7 series
-            socIdentifier.contains("SM7325", ignoreCase = true) -> "v69" // Snapdragon 778G
-            socIdentifier.contains("SM7450", ignoreCase = true) -> "v69" // Snapdragon 7 Gen 1
-
-            // Snapdragon 888 / 888+
-            socIdentifier.contains("SM8350", ignoreCase = true) -> "v68"
-
-            else -> return null// Return null if the SoC is not in our list
+    /**
+     * A recursive helper function to attempt installation of modules from a list.
+     */
+    private fun tryInstallNextModule(
+        context: Context,
+        manager: SplitInstallManager,
+        modulesToTry: List<String>,
+        future: CompletableFuture<String?>
+    ) {
+        // Base case: If the list is empty, all attempts have failed.
+        if (modulesToTry.isEmpty()) {
+            Log.w("VisionProvider", "No compatible NPU module found for this device.")
+            future.complete(null)
+            return
         }
+
+        val moduleName = modulesToTry.first()
+        val remainingModules = modulesToTry.drop(1)
+        Log.i("VisionProvider", "Attempting to install NPU module: '$moduleName'")
+
+        val request = SplitInstallRequest.newBuilder().addModule(moduleName).build()
+
+        // The listener is specific to this one installation attempt.
+        lateinit var listener: SplitInstallStateUpdatedListener
+        listener = SplitInstallStateUpdatedListener { state ->
+            when (state.status()) {
+                SplitInstallSessionStatus.INSTALLED -> {
+                    Log.d("VisionProvider", "NPU module '$moduleName' installed successfully.")
+                    manager.unregisterListener(listener)
+                    future.complete(context.applicationInfo.nativeLibraryDir)
+                }
+                SplitInstallSessionStatus.FAILED -> {
+                    // This is the key part: if it's unavailable, we try the next one.
+                    if (state.errorCode() == SplitInstallErrorCode.MODULE_UNAVAILABLE) {
+                        Log.d("VisionProvider", "Module '$moduleName' is not available. Trying next...")
+                        manager.unregisterListener(listener)
+                        tryInstallNextModule(context, manager, remainingModules, future)
+                    } else {
+                        Log.e("VisionProvider", "Failed to download '$moduleName'. Error: ${state.errorCode()}")
+                        manager.unregisterListener(listener)
+                        future.complete(null) // Stop on any other error
+                    }
+                }
+                SplitInstallSessionStatus.DOWNLOADING -> {
+                    val progress = (state.bytesDownloaded() * 100 / state.totalBytesToDownload()).toInt()
+                    Log.i("VisionProvider", "Downloading '$moduleName': $progress%")
+                }
+                else -> Log.d("VisionProvider", "Status for '$moduleName': ${state.status()}")
+            }
+        }
+
+        manager.registerListener(listener)
+        manager.startInstall(request)
+            .addOnFailureListener { e ->
+                Log.e("VisionProvider", "Start install failed for '$moduleName'", e)
+                manager.unregisterListener(listener)
+                // Attempt the next module even if startInstall fails for some reason
+                tryInstallNextModule(context, manager, remainingModules, future)
+            }
     }
 
     /**
@@ -488,7 +486,7 @@ open class VisionProviderBase(private val context: Context) {
     ): Future<T> {
         val future = CompletableFuture<T>()
 
-        downloadNpuModuleIfNeeded(soc).whenComplete { dispatchLibraryPath, npuException ->
+        downloadNpuModuleIfNeeded().whenComplete { dispatchLibraryPath, npuException ->
             if (npuException != null) {
                 Log.e("VisionProvider", "Failed to prepare NPU module.", npuException)
                 future.completeExceptionally(npuException)

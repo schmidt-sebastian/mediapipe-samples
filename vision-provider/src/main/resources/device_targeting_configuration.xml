@@ -1,5 +1,6 @@
 <config:device-targeting-config
     xmlns:config="http://schemas.android.com/apk/config">
+
     <config:device-group name="mediatek_mt6878_android15">
         <config:device-selector>
             <config:system-on-chip manufacturer="Mediatek" model="MT6878"/>
@@ -30,6 +31,14 @@
             <config:system-on-chip manufacturer="Mediatek" model="MT6991"/>
         </config:device-selector>
     </config:device-group>
+    <config:device-group name="qualcomm_sa8295">
+        <config:device-selector>
+            <config:system-on-chip manufacturer="Qualcomm" model="SA8295"/>
+        </config:device-selector>
+        <config:device-selector>
+            <config:system-on-chip manufacturer="QTI" model="SA8295"/>
+        </config:device-selector>
+    </config:device-group>
     <config:device-group name="qualcomm_sm8350">
         <config:device-selector>
             <config:system-on-chip manufacturer="Qualcomm" model="SM8350"/>
@@ -44,6 +53,14 @@
         </config:device-selector>
         <config:device-selector>
             <config:system-on-chip manufacturer="QTI" model="SM8450"/>
+        </config:device-selector>
+    </config:device-group>
+    <config:device-group name="qualcomm_sm8475">
+        <config:device-selector>
+            <config:system-on-chip manufacturer="Qualcomm" model="SM8475"/>
+        </config:device-selector>
+        <config:device-selector>
+            <config:system-on-chip manufacturer="QTI" model="SM8475"/>
         </config:device-selector>
     </config:device-group>
     <config:device-group name="qualcomm_sm8550">
@@ -68,6 +85,46 @@
         </config:device-selector>
         <config:device-selector>
             <config:system-on-chip manufacturer="QTI" model="SM8750"/>
+        </config:device-selector>
+    </config:device-group>
+    <config:device-group name="qualcomm_ssg2115p">
+        <config:device-selector>
+            <config:system-on-chip manufacturer="Qualcomm" model="SSG2115P"/>
+        </config:device-selector>
+        <config:device-selector>
+            <config:system-on-chip manufacturer="QTI" model="SSG2115P"/>
+        </config:device-selector>
+    </config:device-group>
+    <config:device-group name="qualcomm_ssg2125p">
+        <config:device-selector>
+            <config:system-on-chip manufacturer="Qualcomm" model="SSG2125P"/>
+        </config:device-selector>
+        <config:device-selector>
+            <config:system-on-chip manufacturer="QTI" model="SSG2125P"/>
+        </config:device-selector>
+    </config:device-group>
+    <config:device-group name="qualcomm_sxr1230p">
+        <config:device-selector>
+            <config:system-on-chip manufacturer="Qualcomm" model="SXR1230P"/>
+        </config:device-selector>
+        <config:device-selector>
+            <config:system-on-chip manufacturer="QTI" model="SXR1230P"/>
+        </config:device-selector>
+    </config:device-group>
+    <config:device-group name="qualcomm_sxr2230p">
+        <config:device-selector>
+            <config:system-on-chip manufacturer="Qualcomm" model="SXR2230P"/>
+        </config:device-selector>
+        <config:device-selector>
+            <config:system-on-chip manufacturer="QTI" model="SXR2230P"/>
+        </config:device-selector>
+    </config:device-group>
+    <config:device-group name="qualcomm_sxr2330p">
+        <config:device-selector>
+            <config:system-on-chip manufacturer="Qualcomm" model="SXR2330P"/>
+        </config:device-selector>
+        <config:device-selector>
+            <config:system-on-chip manufacturer="QTI" model="SXR2330P"/>
         </config:device-selector>
     </config:device-group>
 </config:device-targeting-config>
