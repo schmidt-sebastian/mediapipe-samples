@@ -19,6 +19,7 @@ import java.nio.file.StandardOpenOption
  */
 class AIPackModuleGenerator {
 
+    var hfToken: String = System.getenv("HF_TOKEN")
 
     companion object {
         /**

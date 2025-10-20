@@ -13,5 +13,5 @@ dependencies {
 }
 
 group = "com.google.mediapipe.tasks.vision.provider"
-version = "1.0.241"
+version = "1.0.244"
 
