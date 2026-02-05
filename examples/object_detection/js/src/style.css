@@ -1,0 +1,50 @@
+body {
+  font-family: helvetica, arial, sans-serif;
+  margin: 2em;
+  color: #3d3d3d;
+}
+
+h1 {
+  font-style: italic;
+  color: #ff6f00;
+}
+
+video {
+  clear: both;
+  display: block;
+  transform: rotateY(180deg);
+}
+
+section {
+  opacity: 1;
+  transition: opacity 500ms ease-in-out;
+}
+
+.invisible {
+  opacity: 0.2;
+}
+
+.camView {
+  position: relative;
+  float: left;
+  width: 100%;
+  margin: 2px 0;
+  cursor: pointer;
+}
+
+#webcamButton {
+  margin-bottom: 20px;
+  padding: 10px 20px;
+  background-color: #007f8b;
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  border-radius: 4px;
+}
+
+#output_canvas {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+}

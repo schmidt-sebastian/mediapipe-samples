@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MediaPipe Object Detection (TS)</title>
+  </head>
+  <body>
+    <h1>MediaPipe Object Detection (TypeScript)</h1>
+    <p>Click "Enable Webcam" to start detecting objects.</p>
+
+    <section id="demos" class="invisible">
+      <div id="liveView" class="camView">
+        <button id="webcamButton" class="mdc-button mdc-button--raised">
+          <span class="mdc-button__label">Enable Webcam</span>
+        </button>
+        <div style="position: relative;">
+          <video id="webcam" autoplay playsinline></video>
+          <canvas id="output_canvas"></canvas>
+        </div>
+      </div>
+    </section>
+    
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
